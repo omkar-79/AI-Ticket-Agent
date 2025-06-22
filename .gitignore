@@ -1,0 +1,17 @@
+# Environments
+.env
+.venv
+venv/
+
+# IDE / Editor folders
+.vscode/
+
+# Mac OS
+.DS_Store
+
+# Other
+travel-concierge/
+helpdesk.db
+*.pyc
+__pycache__/
+ai-ticket-agent-*.json
