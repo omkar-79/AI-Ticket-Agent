@@ -113,10 +113,11 @@ class TestDatabaseTools:
         ticket = create_ticket(
             subject="Test Ticket",
             description="This is a test ticket",
-            user_email="test@company.com",
-            priority="medium",
             category="general",
-            source="test"
+            priority="medium",
+            created_by="test@company.com",
+            user_email="test@company.com",
+            tags=[]
         )
         
         assert ticket.id is not None
@@ -130,10 +131,11 @@ class TestDatabaseTools:
         created_ticket = create_ticket(
             subject="Test Ticket",
             description="This is a test ticket",
-            user_email="test@company.com",
-            priority="medium",
             category="general",
-            source="test"
+            priority="medium",
+            created_by="test@company.com",
+            user_email="test@company.com",
+            tags=[]
         )
         
         # Then retrieve it
@@ -149,10 +151,11 @@ class TestDatabaseTools:
         ticket = create_ticket(
             subject="Test Ticket",
             description="This is a test ticket",
-            user_email="test@company.com",
-            priority="medium",
             category="general",
-            source="test"
+            priority="medium",
+            created_by="test@company.com",
+            user_email="test@company.com",
+            tags=[]
         )
         
         # Then update it

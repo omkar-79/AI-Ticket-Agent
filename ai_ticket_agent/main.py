@@ -112,6 +112,7 @@ async def create_new_ticket(ticket: TicketCreate):
             category=ticket.category,
             priority=ticket.priority,
             created_by=ticket.user_email,
+            user_email=ticket.user_email,
             tags=[]
         )
         

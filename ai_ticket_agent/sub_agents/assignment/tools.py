@@ -2,8 +2,9 @@
 
 from typing import Dict, List, Any
 from pydantic import BaseModel, Field
-from ai_ticket_agent.tools.database import update_ticket_fields, get_step_data, update_workflow_state
+from ai_ticket_agent.tools.database import update_ticket_fields, get_step_data, update_workflow_state, get_ticket_user_email
 from ai_ticket_agent.tools.notifications import send_team_assignment_notification
+from ai_ticket_agent.tools.notifications import draft_and_send_ticket_email
 
 
 class TicketAssignment(BaseModel):
@@ -124,10 +125,75 @@ def assign_ticket(
         
         notify_team_assignment(ticket_id, ticket_data)
         
+        # Send assignment email to user
+        send_assignment_email_to_user(ticket_id, classification_data, assignment)
+        
     except Exception as e:
         print(f"Error updating ticket assignment: {e}")
     
     return assignment
+
+
+def send_assignment_email_to_user(
+    ticket_id: str,
+    classification_data: Dict[str, Any],
+    assignment: TicketAssignment
+) -> bool:
+    """
+    Send an assignment email to the user when a ticket is assigned to a team.
+    
+    Args:
+        ticket_id: The ticket identifier
+        classification_data: Classification data from previous step
+        assignment: Assignment data from the assignment process
+        
+    Returns:
+        bool: True if email was sent successfully
+    """
+    try:
+        # Get user email from database (primary source) or classification data (fallback)
+        user_email = get_ticket_user_email(ticket_id)
+        if not user_email:
+            user_email = classification_data.get("user_email", "user@company.com")
+            print(f"⚠️ WARNING: Using fallback email from classification data: {user_email}")
+        else:
+            print(f"✅ Using email from database: {user_email}")
+        
+        # Prepare ticket data
+        ticket_data = {
+            "subject": classification_data.get("subject", "IT Support Request"),
+            "priority": classification_data.get("priority", "MEDIUM"),
+            "category": classification_data.get("category", "general"),
+            "user_name": classification_data.get("user_name", "Valued Customer")
+        }
+        
+        # Prepare assignment data
+        assignment_data = {
+            "team": assignment.team,
+            "estimated_response_time": assignment.estimated_response_time,
+            "sla_target": assignment.sla_target,
+            "routing_reason": assignment.routing_reason
+        }
+        
+        # Send the assignment email
+        success = draft_and_send_ticket_email(
+            ticket_id=ticket_id,
+            user_email=user_email,
+            email_type="team_assigned",
+            ticket_data=ticket_data,
+            assignment_data=assignment_data
+        )
+        
+        if success:
+            print(f"✅ Assignment email sent to {user_email} for ticket {ticket_id}")
+        else:
+            print(f"❌ Failed to send assignment email to {user_email} for ticket {ticket_id}")
+        
+        return success
+        
+    except Exception as e:
+        print(f"❌ Error sending assignment email: {e}")
+        return False
 
 
 def notify_team_assignment(

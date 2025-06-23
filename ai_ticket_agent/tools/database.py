@@ -20,6 +20,7 @@ class Ticket(BaseModel):
     assigned_team: str = Field(description="Assigned support team")
     assigned_agent: Optional[str] = Field(description="Assigned agent")
     created_by: str = Field(description="User who created the ticket")
+    user_email: str = Field(description="User email address for notifications")
     created_at: str = Field(description="Creation timestamp")
     updated_at: str = Field(description="Last update timestamp")
     resolved_at: Optional[str] = Field(description="Resolution timestamp")
@@ -74,6 +75,7 @@ def init_database():
             assigned_team TEXT,
             assigned_agent TEXT,
             created_by TEXT NOT NULL,
+            user_email TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             resolved_at TEXT,
@@ -139,6 +141,7 @@ def create_ticket(
     category: str,
     priority: str,
     created_by: str,
+    user_email: str,
     tags: List[str]
 ) -> Ticket:
     """
@@ -150,6 +153,7 @@ def create_ticket(
         category: The ticket category
         priority: The ticket priority
         created_by: The user creating the ticket
+        user_email: The user's email address for notifications
         tags: List of tags for the ticket
         
     Returns:
@@ -181,6 +185,7 @@ def create_ticket(
         assigned_team="",
         assigned_agent=None,
         created_by=created_by,
+        user_email=user_email,
         created_at=datetime.now().isoformat(),
         updated_at=datetime.now().isoformat(),
         resolved_at=None,
@@ -195,13 +200,13 @@ def create_ticket(
     
     cursor.execute('''
         INSERT INTO tickets (id, subject, description, status, priority, category, 
-                           assigned_team, assigned_agent, created_by, created_at, 
-                           updated_at, resolved_at, sla_target, tags)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       assigned_team, assigned_agent, created_by, user_email, created_at, 
+                       updated_at, resolved_at, sla_target, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         ticket.id, ticket.subject, ticket.description, ticket.status, ticket.priority,
         ticket.category, ticket.assigned_team, ticket.assigned_agent, ticket.created_by,
-        ticket.created_at, ticket.updated_at, ticket.resolved_at, ticket.sla_target,
+        ticket.user_email, ticket.created_at, ticket.updated_at, ticket.resolved_at, ticket.sla_target,
         ",".join(ticket.tags) if ticket.tags else ""
     ))
     
@@ -224,12 +229,24 @@ def create_ticket_and_start_workflow(
     Args:
         subject: The subject line of the ticket.
         description: The full description of the issue.
-        user_email: The email address of the user reporting the issue.
+        user_email: The email address of the user reporting the issue (MANDATORY).
         source: The source of the ticket (e.g., 'user_message', 'email').
 
     Returns:
         A dictionary containing the new ticket_id and the initial workflow state.
     """
+    # Validate that user_email is provided and not empty
+    if not user_email or not user_email.strip():
+        return {
+            "error": "user_email is mandatory and cannot be empty. Please provide a valid email address."
+        }
+    
+    # Basic email validation
+    if "@" not in user_email or "." not in user_email:
+        return {
+            "error": "Invalid email format. Please provide a valid email address."
+        }
+    
     try:
         # Create the ticket with a default 'needs classification' state
         ticket = create_ticket(
@@ -238,6 +255,7 @@ def create_ticket_and_start_workflow(
             category="uncategorized",
             priority="medium",
             created_by=user_email,
+            user_email=user_email,
             tags=[]
         )
 
@@ -248,13 +266,17 @@ def create_ticket_and_start_workflow(
             next_step="CLASSIFICATION"
         )
         
+        print(f"✅ Ticket created successfully: {ticket.id}")
+        print(f"📧 User email stored: {user_email}")
+        
         return {
             "ticket_id": ticket.id,
             "message": "Ticket created and workflow initiated.",
-            "next_step": workflow_state.next_step
+            "next_step": workflow_state.next_step,
+            "user_email": user_email
         }
     except Exception as e:
-        print(f"Error in create_ticket_and_start_workflow: {e}")
+        print(f"❌ Error in create_ticket_and_start_workflow: {e}")
         return {"error": str(e)}
 
 
@@ -282,6 +304,11 @@ def get_ticket(
     conn.close()
     
     if row:
+        # Handle NULL values properly
+        updated_at = row[11] if row[11] is not None else row[10]  # Use created_at if updated_at is NULL
+        resolved_at = row[12] if row[12] is not None else None
+        assigned_agent = row[7] if row[7] is not None else None
+        
         return Ticket(
             id=row[0],
             subject=row[1],
@@ -290,13 +317,14 @@ def get_ticket(
             priority=row[4],
             category=row[5],
             assigned_team=row[6] or "",
-            assigned_agent=row[7],
+            assigned_agent=assigned_agent,
             created_by=row[8],
-            created_at=row[9],
-            updated_at=row[10],
-            resolved_at=row[11],
-            sla_target=row[12],
-            tags=row[13].split(",") if row[13] else []
+            user_email=row[9],
+            created_at=row[10],
+            updated_at=updated_at,
+            resolved_at=resolved_at,
+            sla_target=row[13],
+            tags=row[14].split(",") if row[14] else []
         )
     
     return None
@@ -411,6 +439,11 @@ def update_ticket_fields(
     conn.close()
     
     if row:
+        # Handle NULL values properly
+        updated_at = row[11] if row[11] is not None else row[10]  # Use created_at if updated_at is NULL
+        resolved_at = row[12] if row[12] is not None else None
+        assigned_agent = row[7] if row[7] is not None else None
+        
         return Ticket(
             id=row[0],
             subject=row[1],
@@ -419,13 +452,14 @@ def update_ticket_fields(
             priority=row[4],
             category=row[5],
             assigned_team=row[6] or "",
-            assigned_agent=row[7],
+            assigned_agent=assigned_agent,
             created_by=row[8],
-            created_at=row[9],
-            updated_at=row[10],
-            resolved_at=row[11],
-            sla_target=row[12],
-            tags=row[13].split(",") if row[13] else []
+            user_email=row[9],
+            created_at=row[10],
+            updated_at=updated_at,
+            resolved_at=resolved_at,
+            sla_target=row[13],
+            tags=row[14].split(",") if row[14] else []
         )
     
     return None
@@ -487,6 +521,11 @@ def search_tickets(
     
     tickets = []
     for row in rows:
+        # Handle NULL values properly
+        updated_at = row[11] if row[11] is not None else row[10]  # Use created_at if updated_at is NULL
+        resolved_at = row[12] if row[12] is not None else None
+        assigned_agent = row[7] if row[7] is not None else None
+        
         tickets.append(Ticket(
             id=row[0],
             subject=row[1],
@@ -495,13 +534,14 @@ def search_tickets(
             priority=row[4],
             category=row[5],
             assigned_team=row[6] or "",
-            assigned_agent=row[7],
+            assigned_agent=assigned_agent,
             created_by=row[8],
-            created_at=row[9],
-            updated_at=row[10],
-            resolved_at=row[11],
-            sla_target=row[12],
-            tags=row[13].split(",") if row[13] else []
+            user_email=row[9],
+            created_at=row[10],
+            updated_at=updated_at,
+            resolved_at=resolved_at,
+            sla_target=row[13],
+            tags=row[14].split(",") if row[14] else []
         ))
     
     return tickets
@@ -857,4 +897,31 @@ def continue_workflow(
             "status": "complete",
             "next_step": next_step,
             "message": f"Workflow complete. Final step: {next_step}"
-        } 
+        }
+
+
+def get_ticket_user_email(ticket_id: str) -> Optional[str]:
+    """
+    Get the user email address for a specific ticket.
+    
+    Args:
+        ticket_id: The ticket identifier
+        
+    Returns:
+        Optional[str]: The user email address if found, None otherwise
+    """
+    init_database()
+    
+    db_path = os.getenv("DATABASE_URL", "sqlite:///./helpdesk.db").replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT user_email FROM tickets WHERE id = ?', (ticket_id,))
+    row = cursor.fetchone()
+    
+    conn.close()
+    
+    if row:
+        return row[0]
+    
+    return None 

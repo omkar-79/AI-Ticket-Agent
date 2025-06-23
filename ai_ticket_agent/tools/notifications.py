@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from dotenv import load_dotenv
 
 
 class NotificationConfig(BaseModel):
@@ -44,6 +45,8 @@ class SlackNotification(BaseModel):
 
 def get_notification_config() -> NotificationConfig:
     """Get notification configuration from environment variables."""
+    load_dotenv()
+    
     return NotificationConfig(
         email_enabled=os.getenv("SMTP_HOST") is not None,
         slack_enabled=os.getenv("SLACK_BOT_TOKEN") is not None,
@@ -76,9 +79,18 @@ def send_email_notification(
     """
     config = get_notification_config()
     
+    print(f"🔍 DEBUG: Attempting to send email notification")
+    print(f"📧 To: {to_email}")
+    print(f"📝 Subject: {subject}")
+    print(f"⚙️ Email enabled: {config.email_enabled}")
+    
     if not config.email_enabled:
-        print(f"Email notification disabled. Would send to {to_email}: {subject}")
+        print(f"❌ Email notification disabled. Would send to {to_email}: {subject}")
         return True
+    
+    if not config.smtp_username or not config.smtp_password:
+        print(f"❌ SMTP credentials not configured")
+        return False
     
     try:
         # Create message
@@ -95,17 +107,24 @@ def send_email_notification(
             html_part = MIMEText(html_body, 'html')
             msg.attach(html_part)
         
+        print(f"🔌 Connecting to SMTP server: {config.smtp_host}:{config.smtp_port}")
+        
         # Send email
         with smtplib.SMTP(config.smtp_host, config.smtp_port) as server:
             server.starttls()
+            print(f"🔐 Logging in with username: {config.smtp_username}")
             server.login(config.smtp_username, config.smtp_password)
+            print(f"📤 Sending email...")
             server.send_message(msg)
         
-        print(f"Email notification sent to {to_email}: {subject}")
+        print(f"✅ Email notification sent successfully to {to_email}: {subject}")
         return True
         
     except Exception as e:
-        print(f"Failed to send email notification: {e}")
+        print(f"❌ Failed to send email notification: {e}")
+        print(f"🔍 DEBUG: SMTP Host: {config.smtp_host}")
+        print(f"🔍 DEBUG: SMTP Port: {config.smtp_port}")
+        print(f"🔍 DEBUG: SMTP Username: {config.smtp_username}")
         return False
 
 
@@ -517,4 +536,386 @@ def send_notification(
         )
     else:
         print(f"Unknown notification type: {notification_type}")
-        return False 
+        return False
+
+
+def draft_and_send_ticket_email(
+    ticket_id: str,
+    user_email: str,
+    email_type: str,
+    ticket_data: Dict[str, Any],
+    solution_data: Optional[Dict[str, Any]] = None,
+    assignment_data: Optional[Dict[str, Any]] = None
+) -> bool:
+    """
+    Draft and send a professional email to the user based on ticket status.
+    
+    Args:
+        ticket_id: The ticket identifier
+        user_email: The user's email address
+        email_type: Type of email ("solution_found", "team_assigned", "escalated")
+        ticket_data: Basic ticket information
+        solution_data: Knowledge base solution data (for solution_found emails)
+        assignment_data: Team assignment data (for team_assigned emails)
+        
+    Returns:
+        bool: True if email was sent successfully
+    """
+    print(f"🔍 DEBUG: Starting email draft and send process")
+    print(f"🎫 Ticket ID: {ticket_id}")
+    print(f"📧 User Email: {user_email}")
+    print(f"📝 Email Type: {email_type}")
+    print(f"📋 Ticket Data: {ticket_data}")
+    
+    config = get_notification_config()
+    
+    if not config.email_enabled:
+        print(f"❌ Email notifications disabled. Would send {email_type} email to {user_email}")
+        return True
+    
+    # Create email content based on type
+    print(f"📝 Creating email content for type: {email_type}")
+    if email_type == "solution_found":
+        subject, body, html_body = _create_solution_email(ticket_id, ticket_data, solution_data)
+    elif email_type == "team_assigned":
+        subject, body, html_body = _create_assignment_email(ticket_id, ticket_data, assignment_data)
+    elif email_type == "escalated":
+        subject, body, html_body = _create_escalation_email(ticket_id, ticket_data, assignment_data)
+    else:
+        print(f"❌ Unknown email type: {email_type}")
+        return False
+    
+    print(f"📧 Email content created:")
+    print(f"   Subject: {subject}")
+    print(f"   Body length: {len(body)} characters")
+    print(f"   HTML body length: {len(html_body) if html_body else 0} characters")
+    
+    # Send the email
+    success = send_email_notification(
+        to_email=user_email,
+        subject=subject,
+        body=body,
+        html_body=html_body
+    )
+    
+    if success:
+        print(f"✅ {email_type} email sent successfully to {user_email} for ticket {ticket_id}")
+    else:
+        print(f"❌ Failed to send {email_type} email to {user_email} for ticket {ticket_id}")
+    
+    return success
+
+
+def _create_solution_email(
+    ticket_id: str,
+    ticket_data: Dict[str, Any],
+    solution_data: Dict[str, Any]
+) -> tuple[str, str, str]:
+    """Create email content for when a solution is found in knowledge base."""
+    
+    subject = f"Solution Found - Ticket {ticket_id}: {ticket_data.get('subject', 'IT Support Request')}"
+    
+    # Plain text body
+    body = f"""
+Dear {ticket_data.get('user_name', 'Valued Customer')},
+
+Good news! We found a solution for your IT support request.
+
+Ticket ID: {ticket_id}
+Subject: {ticket_data.get('subject', 'N/A')}
+Priority: {ticket_data.get('priority', 'N/A')}
+
+SOLUTION:
+{solution_data.get('response_text', 'No solution text provided')}
+
+STEP-BY-STEP INSTRUCTIONS:
+"""
+    
+    for i, step in enumerate(solution_data.get('solution_steps', []), 1):
+        body += f"{i}. {step}\n"
+    
+    body += f"""
+
+If these steps don't resolve your issue, please reply to this email and we'll escalate your ticket to a specialist.
+
+Additional Resources:
+"""
+    
+    for article in solution_data.get('related_articles', []):
+        body += f"- {article}\n"
+    
+    body += f"""
+
+Thank you for using our IT support service.
+
+Best regards,
+IT Support Team
+
+---
+This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.
+    """.strip()
+    
+    # HTML body
+    html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .header {{ background-color: #4CAF50; color: white; padding: 20px; text-align: center; }}
+        .content {{ padding: 20px; }}
+        .ticket-info {{ background-color: #f9f9f9; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }}
+        .solution {{ background-color: #e8f5e8; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }}
+        .steps {{ background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0; }}
+        .footer {{ background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; }}
+        .button {{ background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✅ Solution Found</h1>
+        <p>Your IT support request has been resolved!</p>
+    </div>
+    
+    <div class="content">
+        <p>Dear {ticket_data.get('user_name', 'Valued Customer')},</p>
+        
+        <p>Good news! We found a solution for your IT support request.</p>
+        
+        <div class="ticket-info">
+            <strong>Ticket ID:</strong> {ticket_id}<br>
+            <strong>Subject:</strong> {ticket_data.get('subject', 'N/A')}<br>
+            <strong>Priority:</strong> {ticket_data.get('priority', 'N/A')}
+        </div>
+        
+        <div class="solution">
+            <h3>Solution:</h3>
+            <p>{solution_data.get('response_text', 'No solution text provided')}</p>
+        </div>
+        
+        <div class="steps">
+            <h3>Step-by-Step Instructions:</h3>
+            <ol>
+"""
+    
+    for step in solution_data.get('solution_steps', []):
+        html_body += f"                <li>{step}</li>\n"
+    
+    html_body += f"""
+            </ol>
+        </div>
+        
+        <p><strong>Additional Resources:</strong></p>
+        <ul>
+"""
+    
+    for article in solution_data.get('related_articles', []):
+        html_body += f"            <li>{article}</li>\n"
+    
+    html_body += f"""
+        </ul>
+        
+        <p>If these steps don't resolve your issue, please reply to this email and we'll escalate your ticket to a specialist.</p>
+        
+        <p>Thank you for using our IT support service.</p>
+        
+        <p>Best regards,<br>IT Support Team</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.</p>
+    </div>
+</body>
+</html>
+    """.strip()
+    
+    return subject, body, html_body
+
+
+def _create_assignment_email(
+    ticket_id: str,
+    ticket_data: Dict[str, Any],
+    assignment_data: Dict[str, Any]
+) -> tuple[str, str, str]:
+    """Create email content for when a ticket is assigned to a team."""
+    
+    subject = f"Ticket Assigned - {ticket_id}: {ticket_data.get('subject', 'IT Support Request')}"
+    
+    # Plain text body
+    body = f"""
+Dear {ticket_data.get('user_name', 'Valued Customer')},
+
+Your IT support request has been received and assigned to our specialized team.
+
+Ticket ID: {ticket_id}
+Subject: {ticket_data.get('subject', 'N/A')}
+Priority: {ticket_data.get('priority', 'N/A')}
+Category: {ticket_data.get('category', 'N/A')}
+
+ASSIGNMENT DETAILS:
+Assigned Team: {assignment_data.get('team', 'N/A')}
+Expected Response Time: {assignment_data.get('estimated_response_time', 'N/A')}
+SLA Target: {assignment_data.get('sla_target', 'N/A')}
+
+Our {assignment_data.get('team', 'specialized team')} will review your request and provide a solution within the specified timeframe.
+
+You will receive updates on your ticket status via email. If you have any urgent questions, please reply to this email.
+
+Thank you for your patience.
+
+Best regards,
+IT Support Team
+
+---
+This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.
+    """.strip()
+    
+    # HTML body
+    html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .header {{ background-color: #007bff; color: white; padding: 20px; text-align: center; }}
+        .content {{ padding: 20px; }}
+        .ticket-info {{ background-color: #f9f9f9; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0; }}
+        .assignment {{ background-color: #e3f2fd; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0; }}
+        .footer {{ background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📋 Ticket Assigned</h1>
+        <p>Your IT support request has been assigned to our specialized team</p>
+    </div>
+    
+    <div class="content">
+        <p>Dear {ticket_data.get('user_name', 'Valued Customer')},</p>
+        
+        <p>Your IT support request has been received and assigned to our specialized team.</p>
+        
+        <div class="ticket-info">
+            <strong>Ticket ID:</strong> {ticket_id}<br>
+            <strong>Subject:</strong> {ticket_data.get('subject', 'N/A')}<br>
+            <strong>Priority:</strong> {ticket_data.get('priority', 'N/A')}<br>
+            <strong>Category:</strong> {ticket_data.get('category', 'N/A')}
+        </div>
+        
+        <div class="assignment">
+            <h3>Assignment Details:</h3>
+            <p><strong>Assigned Team:</strong> {assignment_data.get('team', 'N/A')}</p>
+            <p><strong>Expected Response Time:</strong> {assignment_data.get('estimated_response_time', 'N/A')}</p>
+            <p><strong>SLA Target:</strong> {assignment_data.get('sla_target', 'N/A')}</p>
+        </div>
+        
+        <p>Our {assignment_data.get('team', 'specialized team')} will review your request and provide a solution within the specified timeframe.</p>
+        
+        <p>You will receive updates on your ticket status via email. If you have any urgent questions, please reply to this email.</p>
+        
+        <p>Thank you for your patience.</p>
+        
+        <p>Best regards,<br>IT Support Team</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.</p>
+    </div>
+</body>
+</html>
+    """.strip()
+    
+    return subject, body, html_body
+
+
+def _create_escalation_email(
+    ticket_id: str,
+    ticket_data: Dict[str, Any],
+    assignment_data: Dict[str, Any]
+) -> tuple[str, str, str]:
+    """Create email content for when a ticket is escalated."""
+    
+    subject = f"Ticket Escalated - {ticket_id}: {ticket_data.get('subject', 'IT Support Request')}"
+    
+    # Plain text body
+    body = f"""
+Dear {ticket_data.get('user_name', 'Valued Customer')},
+
+Your IT support request has been escalated to our senior support team for specialized attention.
+
+Ticket ID: {ticket_id}
+Subject: {ticket_data.get('subject', 'N/A')}
+Priority: {ticket_data.get('priority', 'N/A')}
+
+ESCALATION DETAILS:
+Escalated To: {assignment_data.get('team', 'Senior Support Team')}
+Reason: {assignment_data.get('escalation_reason', 'Complex technical issue requiring specialized expertise')}
+Expected Response Time: {assignment_data.get('estimated_response_time', 'N/A')}
+
+Our senior team will provide a comprehensive solution to your issue. You will receive updates as we work on your request.
+
+Thank you for your patience.
+
+Best regards,
+IT Support Team
+
+---
+This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.
+    """.strip()
+    
+    # HTML body (similar structure to assignment email but with escalation styling)
+    html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .header {{ background-color: #dc3545; color: white; padding: 20px; text-align: center; }}
+        .content {{ padding: 20px; }}
+        .ticket-info {{ background-color: #f9f9f9; padding: 15px; border-left: 4px solid #dc3545; margin: 20px 0; }}
+        .escalation {{ background-color: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; margin: 20px 0; }}
+        .footer {{ background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚨 Ticket Escalated</h1>
+        <p>Your IT support request has been escalated for specialized attention</p>
+    </div>
+    
+    <div class="content">
+        <p>Dear {ticket_data.get('user_name', 'Valued Customer')},</p>
+        
+        <p>Your IT support request has been escalated to our senior support team for specialized attention.</p>
+        
+        <div class="ticket-info">
+            <strong>Ticket ID:</strong> {ticket_id}<br>
+            <strong>Subject:</strong> {ticket_data.get('subject', 'N/A')}<br>
+            <strong>Priority:</strong> {ticket_data.get('priority', 'N/A')}
+        </div>
+        
+        <div class="escalation">
+            <h3>Escalation Details:</h3>
+            <p><strong>Escalated To:</strong> {assignment_data.get('team', 'Senior Support Team')}</p>
+            <p><strong>Reason:</strong> {assignment_data.get('escalation_reason', 'Complex technical issue requiring specialized expertise')}</p>
+            <p><strong>Expected Response Time:</strong> {assignment_data.get('estimated_response_time', 'N/A')}</p>
+        </div>
+        
+        <p>Our senior team will provide a comprehensive solution to your issue. You will receive updates as we work on your request.</p>
+        
+        <p>Thank you for your patience.</p>
+        
+        <p>Best regards,<br>IT Support Team</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.</p>
+    </div>
+</body>
+</html>
+    """.strip()
+    
+    return subject, body, html_body 

@@ -46,6 +46,10 @@ def classify_ticket(
     Returns:
         A dictionary containing the classification results.
     """
+    print(f"DEBUG: classify_ticket called with ticket_id: {ticket_id}")
+    print(f"DEBUG: Subject: {subject}")
+    print(f"DEBUG: Description: {description}")
+    
     # This would integrate with an LLM for actual classification.
     # For now, returning a hardcoded response.
     classification = {
@@ -58,29 +62,37 @@ def classify_ticket(
         "suggested_team": "Network Support"
     }
     
+    print(f"DEBUG: Classification result: {classification}")
+    
     try:
+        print(f"DEBUG: Updating ticket fields for {ticket_id}")
         # Update the ticket in the database with the classification details
-        update_ticket_fields(
+        update_result = update_ticket_fields(
             ticket_id=ticket_id,
             updates={
                 "category": classification["category"],
                 "priority": classification["priority"],
             }
         )
+        print(f"DEBUG: Ticket update result: {update_result}")
         
+        print(f"DEBUG: Updating workflow state for {ticket_id}")
         # Update the workflow state to reflect that classification is complete
-        update_workflow_state(
+        workflow_update = update_workflow_state(
             ticket_id=ticket_id,
             current_step="CLASSIFICATION",
             next_step="KNOWLEDGE_SEARCH",
             step_data={"CLASSIFICATION": classification},
-            status="classified"
+            status="active"
         )
+        print(f"DEBUG: Workflow update result: {workflow_update}")
         
-        print(f"Ticket {ticket_id} classified. Next step: KNOWLEDGE_SEARCH")
+        print(f"DEBUG: Ticket {ticket_id} classified successfully. Next step: KNOWLEDGE_SEARCH")
         
     except Exception as e:
-        print(f"Error in classify_ticket: {e}")
+        print(f"ERROR in classify_ticket: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": str(e)}
     
     return classification
