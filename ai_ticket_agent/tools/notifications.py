@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from dotenv import load_dotenv
+import re
 
 
 class NotificationConfig(BaseModel):
@@ -606,16 +607,66 @@ def draft_and_send_ticket_email(
     return success
 
 
+def _markdown_to_html_sections(md_text: str) -> str:
+    """Convert markdown-like solution text to HTML with headings and lists."""
+    html = ""
+    lines = md_text.split('\n')
+    in_ul = False
+    for line in lines:
+        line = line.strip()
+        if not line:
+            if in_ul:
+                html += '</ul>'
+                in_ul = False
+            continue
+        if line.startswith('# '):
+            if in_ul:
+                html += '</ul>'
+                in_ul = False
+            html += f'<h2>{line[2:].strip()}</h2>'
+        elif line.startswith('## '):
+            if in_ul:
+                html += '</ul>'
+                in_ul = False
+            html += f'<h3>{line[3:].strip()}</h3>'
+        elif line.startswith('### '):
+            if in_ul:
+                html += '</ul>'
+                in_ul = False
+            html += f'<h4>{line[4:].strip()}</h4>'
+        elif re.match(r'\*\*.*\*\*', line):
+            if in_ul:
+                html += '</ul>'
+                in_ul = False
+            html += f'<b>{line.replace("**", "")}</b><br>'
+        elif re.match(r'\d+\. ', line):
+            if not in_ul:
+                html += '<ul>'
+                in_ul = True
+            html += f'<li>{line[3:].strip()}</li>'
+        elif line.startswith('- '):
+            if not in_ul:
+                html += '<ul>'
+                in_ul = True
+            html += f'<li>{line[2:].strip()}</li>'
+        else:
+            if in_ul:
+                html += '</ul>'
+                in_ul = False
+            html += f'<p>{line}</p>'
+    if in_ul:
+        html += '</ul>'
+    return html
+
+
 def _create_solution_email(
     ticket_id: str,
     ticket_data: Dict[str, Any],
     solution_data: Dict[str, Any]
 ) -> tuple[str, str, str]:
     """Create email content for when a solution is found in knowledge base."""
-    
     subject = f"Solution Found - Ticket {ticket_id}: {ticket_data.get('subject', 'IT Support Request')}"
-    
-    # Plain text body
+    # Plain text body (unchanged)
     body = f"""
 Dear {ticket_data.get('user_name', 'Valued Customer')},
 
@@ -630,20 +681,16 @@ SOLUTION:
 
 STEP-BY-STEP INSTRUCTIONS:
 """
-    
     for i, step in enumerate(solution_data.get('solution_steps', []), 1):
         body += f"{i}. {step}\n"
-    
     body += f"""
 
 If these steps don't resolve your issue, please reply to this email and we'll escalate your ticket to a specialist.
 
 Additional Resources:
 """
-    
     for article in solution_data.get('related_articles', []):
         body += f"- {article}\n"
-    
     body += f"""
 
 Thank you for using our IT support service.
@@ -654,13 +701,13 @@ IT Support Team
 ---
 This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.
     """.strip()
-    
-    # HTML body
+
+    # HTML body (improved)
     html_body = f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
+    <meta charset=\"UTF-8\">
     <style>
         body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
         .header {{ background-color: #4CAF50; color: white; padding: 20px; text-align: center; }}
@@ -670,66 +717,53 @@ This is an automated response. For urgent issues, please call our helpdesk at 1-
         .steps {{ background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0; }}
         .footer {{ background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; }}
         .button {{ background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; }}
+        h2, h3, h4 {{ margin-bottom: 0.5em; }}
+        ul, ol {{ margin-top: 0.5em; margin-bottom: 0.5em; }}
     </style>
 </head>
 <body>
-    <div class="header">
+    <div class=\"header\">
         <h1>✅ Solution Found</h1>
         <p>Your IT support request has been resolved!</p>
     </div>
-    
-    <div class="content">
+    <div class=\"content\">
         <p>Dear {ticket_data.get('user_name', 'Valued Customer')},</p>
-        
         <p>Good news! We found a solution for your IT support request.</p>
-        
-        <div class="ticket-info">
+        <div class=\"ticket-info\">
             <strong>Ticket ID:</strong> {ticket_id}<br>
             <strong>Subject:</strong> {ticket_data.get('subject', 'N/A')}<br>
             <strong>Priority:</strong> {ticket_data.get('priority', 'N/A')}
         </div>
-        
-        <div class="solution">
-            <h3>Solution:</h3>
-            <p>{solution_data.get('response_text', 'No solution text provided')}</p>
+        <div class=\"solution\">
+            <h2>Solution: {solution_data.get('related_articles', [''])[0]}</h2>
+            {_markdown_to_html_sections(solution_data.get('response_text', 'No solution text provided'))}
         </div>
-        
-        <div class="steps">
+        <div class=\"steps\">
             <h3>Step-by-Step Instructions:</h3>
             <ol>
 """
-    
     for step in solution_data.get('solution_steps', []):
         html_body += f"                <li>{step}</li>\n"
-    
     html_body += f"""
             </ol>
         </div>
-        
         <p><strong>Additional Resources:</strong></p>
         <ul>
 """
-    
     for article in solution_data.get('related_articles', []):
         html_body += f"            <li>{article}</li>\n"
-    
     html_body += f"""
         </ul>
-        
         <p>If these steps don't resolve your issue, please reply to this email and we'll escalate your ticket to a specialist.</p>
-        
         <p>Thank you for using our IT support service.</p>
-        
         <p>Best regards,<br>IT Support Team</p>
     </div>
-    
-    <div class="footer">
+    <div class=\"footer\">
         <p>This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.</p>
     </div>
 </body>
 </html>
     """.strip()
-    
     return subject, body, html_body
 
 

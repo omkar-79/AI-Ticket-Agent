@@ -24,6 +24,7 @@ class Ticket(BaseModel):
     created_at: str = Field(description="Creation timestamp")
     updated_at: str = Field(description="Last update timestamp")
     resolved_at: Optional[str] = Field(description="Resolution timestamp")
+    resolution_notes: Optional[str] = Field(description="Notes on how the ticket was resolved")
     sla_target: str = Field(description="SLA target time")
     tags: List[str] = Field(description="Ticket tags")
 
@@ -79,6 +80,7 @@ def init_database():
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             resolved_at TEXT,
+            resolution_notes TEXT,
             sla_target TEXT NOT NULL DEFAULT '8 hours',
             tags TEXT
         )
@@ -189,6 +191,7 @@ def create_ticket(
         created_at=datetime.now().isoformat(),
         updated_at=datetime.now().isoformat(),
         resolved_at=None,
+        resolution_notes=None,
         sla_target=sla_target,
         tags=tags
     )
@@ -201,12 +204,12 @@ def create_ticket(
     cursor.execute('''
         INSERT INTO tickets (id, subject, description, status, priority, category, 
                        assigned_team, assigned_agent, created_by, user_email, created_at, 
-                       updated_at, resolved_at, sla_target, tags)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       updated_at, resolved_at, resolution_notes, sla_target, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         ticket.id, ticket.subject, ticket.description, ticket.status, ticket.priority,
         ticket.category, ticket.assigned_team, ticket.assigned_agent, ticket.created_by,
-        ticket.user_email, ticket.created_at, ticket.updated_at, ticket.resolved_at, ticket.sla_target,
+        ticket.user_email, ticket.created_at, ticket.updated_at, ticket.resolved_at, ticket.resolution_notes, ticket.sla_target,
         ",".join(ticket.tags) if ticket.tags else ""
     ))
     
@@ -307,6 +310,7 @@ def get_ticket(
         # Handle NULL values properly
         updated_at = row[11] if row[11] is not None else row[10]  # Use created_at if updated_at is NULL
         resolved_at = row[12] if row[12] is not None else None
+        resolution_notes = row[13] if row[13] is not None else None
         assigned_agent = row[7] if row[7] is not None else None
         
         return Ticket(
@@ -323,8 +327,9 @@ def get_ticket(
             created_at=row[10],
             updated_at=updated_at,
             resolved_at=resolved_at,
-            sla_target=row[13],
-            tags=row[14].split(",") if row[14] else []
+            resolution_notes=resolution_notes,
+            sla_target=row[14],
+            tags=row[15].split(",") if row[15] else []
         )
     
     return None
@@ -442,6 +447,7 @@ def update_ticket_fields(
         # Handle NULL values properly
         updated_at = row[11] if row[11] is not None else row[10]  # Use created_at if updated_at is NULL
         resolved_at = row[12] if row[12] is not None else None
+        resolution_notes = row[13] if row[13] is not None else None
         assigned_agent = row[7] if row[7] is not None else None
         
         return Ticket(
@@ -458,8 +464,9 @@ def update_ticket_fields(
             created_at=row[10],
             updated_at=updated_at,
             resolved_at=resolved_at,
-            sla_target=row[13],
-            tags=row[14].split(",") if row[14] else []
+            resolution_notes=resolution_notes,
+            sla_target=row[14],
+            tags=row[15].split(",") if row[15] else []
         )
     
     return None
@@ -524,6 +531,7 @@ def search_tickets(
         # Handle NULL values properly
         updated_at = row[11] if row[11] is not None else row[10]  # Use created_at if updated_at is NULL
         resolved_at = row[12] if row[12] is not None else None
+        resolution_notes = row[13] if row[13] is not None else None
         assigned_agent = row[7] if row[7] is not None else None
         
         tickets.append(Ticket(
@@ -540,8 +548,9 @@ def search_tickets(
             created_at=row[10],
             updated_at=updated_at,
             resolved_at=resolved_at,
-            sla_target=row[13],
-            tags=row[14].split(",") if row[14] else []
+            resolution_notes=resolution_notes,
+            sla_target=row[14],
+            tags=row[15].split(",") if row[15] else []
         ))
     
     return tickets
@@ -633,6 +642,8 @@ def get_workflow_state(
     """
     init_database()
     
+    print(f"DEBUG: get_workflow_state called for ticket_id: {ticket_id}")
+    
     db_path = os.getenv("DATABASE_URL", "sqlite:///./helpdesk.db").replace("sqlite:///", "")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -646,13 +657,24 @@ def get_workflow_state(
     row = cursor.fetchone()
     conn.close()
     
+    print(f"DEBUG: Database query result: {row}")
+    
     if row:
         # Parse step_data from string back to dict
         import ast
-        step_data = ast.literal_eval(row[4]) if row[4] else {}
+        step_data_raw = row[4]
+        print(f"DEBUG: Raw step_data from database: {step_data_raw}")
+        
+        try:
+            step_data = ast.literal_eval(step_data_raw) if step_data_raw else {}
+            print(f"DEBUG: Parsed step_data: {step_data}")
+        except Exception as e:
+            print(f"DEBUG: Error parsing step_data: {e}")
+            step_data = {}
+        
         completed_steps = row[3].split(",") if row[3] else []
         
-        return WorkflowState(
+        workflow_state = WorkflowState(
             ticket_id=row[0],
             current_step=row[1],
             next_step=row[2],
@@ -662,7 +684,11 @@ def get_workflow_state(
             created_at=row[6],
             updated_at=row[7]
         )
+        
+        print(f"DEBUG: Created WorkflowState: {workflow_state}")
+        return workflow_state
     
+    print(f"DEBUG: No workflow state found for ticket_id: {ticket_id}")
     return None
 
 
@@ -688,10 +714,15 @@ def update_workflow_state(
     """
     init_database()
     
+    print(f"DEBUG: update_workflow_state called with step_data: {step_data}")
+    
     # Get current state
     current_state = get_workflow_state(ticket_id)
     if not current_state:
+        print(f"DEBUG: No current state found, creating new workflow state")
         return create_workflow_state(ticket_id, current_step or "CLASSIFICATION", next_step or "KNOWLEDGE_SEARCH")
+    
+    print(f"DEBUG: Current state step_data before update: {current_state.step_data}")
     
     # Update fields
     if current_step:
@@ -703,7 +734,9 @@ def update_workflow_state(
         current_state.next_step = next_step
     
     if step_data:
+        print(f"DEBUG: Updating step_data with: {step_data}")
         current_state.step_data.update(step_data)
+        print(f"DEBUG: Step_data after update: {current_state.step_data}")
     
     if status:
         current_state.status = status
@@ -715,6 +748,9 @@ def update_workflow_state(
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
+    step_data_str = str(current_state.step_data)
+    print(f"DEBUG: Storing step_data as string: {step_data_str}")
+    
     cursor.execute('''
         UPDATE workflow_state 
         SET current_step = ?, next_step = ?, completed_steps = ?, step_data = ?, status = ?, updated_at = ?
@@ -723,7 +759,7 @@ def update_workflow_state(
         current_state.current_step,
         current_state.next_step,
         ",".join(current_state.completed_steps),
-        str(current_state.step_data),
+        step_data_str,
         current_state.status,
         current_state.updated_at,
         current_state.ticket_id
@@ -732,6 +768,7 @@ def update_workflow_state(
     conn.commit()
     conn.close()
     
+    print(f"DEBUG: Workflow state updated successfully")
     return current_state
 
 
@@ -880,8 +917,8 @@ def continue_workflow(
     step_to_agent = {
         "CLASSIFICATION": "classifier_agent",
         "KNOWLEDGE_SEARCH": "knowledge_agent", 
-        "ASSIGNMENT": "assignment_agent",
-        "FOLLOW_UP": "follow_up_agent"
+        "ASSIGNMENT": "assignment_agent"
+        # FOLLOW_UP removed from main workflow
     }
     
     if next_step in step_to_agent:
@@ -892,6 +929,14 @@ def continue_workflow(
             "ticket_id": ticket_id,
             "message": f"Continue workflow: transfer to {step_to_agent[next_step]} for {next_step}"
         }
+    elif next_step == "COMPLETE":
+        # Workflow is complete - solution found or ticket assigned
+        return {
+            "status": "complete",
+            "next_step": "COMPLETE",
+            "message": "Workflow complete. Solution provided or ticket assigned for human processing."
+        }
+    # FOLLOW_UP is only for feedback, not main workflow
     else:
         return {
             "status": "complete",
@@ -902,26 +947,76 @@ def continue_workflow(
 
 def get_ticket_user_email(ticket_id: str) -> Optional[str]:
     """
-    Get the user email address for a specific ticket.
+    Get the user email for a ticket.
     
     Args:
         ticket_id: The ticket identifier
         
     Returns:
-        Optional[str]: The user email address if found, None otherwise
+        str: The user email address, or None if not found
     """
-    init_database()
-    
     db_path = os.getenv("DATABASE_URL", "sqlite:///./helpdesk.db").replace("sqlite:///", "")
+    
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    cursor.execute('SELECT user_email FROM tickets WHERE id = ?', (ticket_id,))
-    row = cursor.fetchone()
+    cursor.execute('''
+        SELECT user_email FROM tickets WHERE id = ?
+    ''', (ticket_id,))
     
+    result = cursor.fetchone()
     conn.close()
     
-    if row:
-        return row[0]
+    return result[0] if result else None
+
+
+def get_ticket_info(ticket_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get ticket information as a dictionary for use by sub-agents.
     
-    return None 
+    Args:
+        ticket_id: The ticket identifier
+        
+    Returns:
+        Dict[str, Any]: Ticket information as a dictionary, or None if not found
+    """
+    db_path = os.getenv("DATABASE_URL", "sqlite:///./helpdesk.db").replace("sqlite:///", "")
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT id, subject, description, status, priority, category, 
+               assigned_team, assigned_agent, created_by, user_email, 
+               created_at, updated_at, resolved_at, resolution_notes, 
+               sla_target, tags
+        FROM tickets WHERE id = ?
+    ''', (ticket_id,))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if not result:
+        return None
+    
+    # Convert to dictionary
+    ticket_info = {
+        "id": result[0],
+        "subject": result[1],
+        "description": result[2],
+        "status": result[3],
+        "priority": result[4],
+        "category": result[5],
+        "assigned_team": result[6],
+        "assigned_agent": result[7],
+        "created_by": result[8],
+        "user_email": result[9],
+        "created_at": result[10],
+        "updated_at": result[11],
+        "resolved_at": result[12],
+        "resolution_notes": result[13],
+        "sla_target": result[14],
+        "tags": result[15].split(',') if result[15] else []
+    }
+    
+    return ticket_info 

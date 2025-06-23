@@ -2,6 +2,13 @@
 
 from typing import Dict, List, Any
 from pydantic import BaseModel, Field
+from ai_ticket_agent.tools.monitoring import (
+    check_ticket_sla_status,
+    process_sla_alert,
+    monitor_all_active_tickets,
+    SLAAlert
+)
+from ai_ticket_agent.tools.database import get_ticket, search_tickets
 
 
 class SLAMetrics(BaseModel):
@@ -57,29 +64,49 @@ def check_sla_status(
     Returns:
         SLAMetrics: Current SLA metrics for the ticket
     """
-    # This would calculate actual SLA metrics based on business rules
-    # For now, returning sample data
-    sla_targets = {
-        "critical": "2 hours",
-        "high": "4 hours", 
-        "medium": "8 hours",
-        "low": "24 hours"
-    }
+    # Use the monitoring system to check SLA status
+    sla_alert = check_ticket_sla_status(ticket_id)
     
-    sla_target = sla_targets.get(priority, "8 hours")
-    time_elapsed = "3 hours"  # This would be calculated from created_time
-    time_remaining = "1 hour"  # This would be calculated
-    sla_status = "at_risk" if priority == "critical" else "on_track"
-    breach_probability = 0.3 if sla_status == "at_risk" else 0.1
+    # Get ticket data for additional context
+    ticket = get_ticket(ticket_id)
+    if not ticket:
+        return SLAMetrics(
+            ticket_id=ticket_id,
+            sla_target="unknown",
+            time_elapsed="unknown",
+            time_remaining="unknown",
+            sla_status="unknown",
+            breach_probability=0.0,
+            priority_adjustment_needed=False
+        )
+    
+    # Determine SLA status based on alert
+    if sla_alert:
+        if sla_alert.alert_type == "breach":
+            sla_status = "breached"
+            breach_probability = 1.0
+            priority_adjustment_needed = True
+        elif sla_alert.severity == "high":
+            sla_status = "at_risk"
+            breach_probability = 0.8
+            priority_adjustment_needed = True
+        else:
+            sla_status = "at_risk"
+            breach_probability = 0.5
+            priority_adjustment_needed = False
+    else:
+        sla_status = "on_track"
+        breach_probability = 0.1
+        priority_adjustment_needed = False
     
     return SLAMetrics(
         ticket_id=ticket_id,
-        sla_target=sla_target,
-        time_elapsed=time_elapsed,
-        time_remaining=time_remaining,
+        sla_target=ticket.sla_target,
+        time_elapsed="calculated",  # Would be calculated from created_time
+        time_remaining=sla_alert.time_remaining if sla_alert else "sufficient",
         sla_status=sla_status,
         breach_probability=breach_probability,
-        priority_adjustment_needed=sla_status == "at_risk"
+        priority_adjustment_needed=priority_adjustment_needed
     )
 
 
@@ -97,36 +124,30 @@ def generate_sla_alert(
     Returns:
         SLAAlert: Generated alert notification
     """
-    sla_status = sla_metrics.get("sla_status", "on_track")
-    time_remaining = sla_metrics.get("time_remaining", "unknown")
+    # Use the monitoring system to check for SLA alerts
+    sla_alert = check_ticket_sla_status(ticket_id)
     
-    if sla_status == "breached":
-        alert_type = "breach"
-        severity = "critical"
-        message = f"SLA breached for ticket {ticket_id}. Immediate attention required."
-        recommended_action = "Escalate immediately and notify management"
-        escalation_needed = True
-    elif sla_status == "at_risk":
-        alert_type = "warning"
-        severity = "high"
-        message = f"Ticket {ticket_id} at risk of SLA breach. {time_remaining} remaining."
-        recommended_action = "Review priority and consider escalation"
-        escalation_needed = False
+    if sla_alert:
+        # Determine if escalation is needed
+        escalation_needed = sla_alert.severity in ["critical", "high"]
+        
+        return SLAAlert(
+            alert_type=sla_alert.alert_type,
+            ticket_id=ticket_id,
+            message=sla_alert.message,
+            severity=sla_alert.severity,
+            recommended_action="Escalate immediately" if escalation_needed else "Review priority",
+            escalation_needed=escalation_needed
+        )
     else:
-        alert_type = "info"
-        severity = "low"
-        message = f"Ticket {ticket_id} on track for SLA compliance."
-        recommended_action = "Continue monitoring"
-        escalation_needed = False
-    
-    return SLAAlert(
-        alert_type=alert_type,
-        ticket_id=ticket_id,
-        message=message,
-        severity=severity,
-        recommended_action=recommended_action,
-        escalation_needed=escalation_needed
-    )
+        return SLAAlert(
+            alert_type="info",
+            ticket_id=ticket_id,
+            message=f"Ticket {ticket_id} on track for SLA compliance",
+            severity="low",
+            recommended_action="Continue monitoring",
+            escalation_needed=False
+        )
 
 
 def get_team_sla_report(
@@ -143,13 +164,129 @@ def get_team_sla_report(
     Returns:
         TeamSLAReport: SLA performance report
     """
-    # This would query the ticketing system for actual SLA data
+    # Get all tickets for the team
+    team_tickets = search_tickets(assigned_team=team, limit=1000)
+    
+    total_tickets = len(team_tickets)
+    breached_tickets = 0
+    at_risk_tickets = 0
+    resolved_tickets = 0
+    
+    # Analyze each ticket
+    for ticket in team_tickets:
+        sla_alert = check_ticket_sla_status(ticket.id)
+        if sla_alert:
+            if sla_alert.alert_type == "breach":
+                breached_tickets += 1
+            elif sla_alert.severity in ["high", "medium"]:
+                at_risk_tickets += 1
+        
+        if ticket.status in ["resolved", "closed"]:
+            resolved_tickets += 1
+    
+    # Calculate compliance rate
+    if total_tickets > 0:
+        sla_compliance_rate = (total_tickets - breached_tickets) / total_tickets
+    else:
+        sla_compliance_rate = 1.0
+    
     return TeamSLAReport(
         team=team,
         period=period,
-        total_tickets=45,
-        sla_compliance_rate=0.89,
-        average_resolution_time="3.2 hours",
-        breached_tickets=3,
-        at_risk_tickets=2
-    ) 
+        total_tickets=total_tickets,
+        sla_compliance_rate=sla_compliance_rate,
+        average_resolution_time="calculated",  # Would be calculated from actual data
+        breached_tickets=breached_tickets,
+        at_risk_tickets=at_risk_tickets
+    )
+
+
+def run_sla_monitoring() -> Dict[str, Any]:
+    """
+    Run SLA monitoring for all active tickets.
+    
+    Returns:
+        Dict containing SLA monitoring results
+    """
+    # Use the monitoring system to check all tickets
+    monitoring_results = monitor_all_active_tickets()
+    
+    sla_results = []
+    
+    # Process any SLA alerts found
+    for alert_data in monitoring_results["sla_alerts"]:
+        alert = SLAAlert(**alert_data)
+        result = process_sla_alert(alert)
+        sla_results.append(result)
+    
+    return {
+        "monitoring_time": monitoring_results["monitoring_time"],
+        "tickets_checked": monitoring_results["tickets_checked"],
+        "sla_alerts_found": len(monitoring_results["sla_alerts"]),
+        "sla_alerts_processed": len(sla_results),
+        "sla_results": sla_results
+    }
+
+
+def get_tickets_with_sla_issues() -> List[Dict[str, Any]]:
+    """
+    Get all tickets with SLA issues.
+    
+    Returns:
+        List of tickets with SLA issues
+    """
+    # Get all active tickets
+    open_tickets = search_tickets(status="open", limit=100)
+    in_progress_tickets = search_tickets(status="in_progress", limit=100)
+    all_active_tickets = open_tickets + in_progress_tickets
+    
+    tickets_with_issues = []
+    
+    for ticket in all_active_tickets:
+        # Check if this ticket has SLA issues
+        sla_alert = check_ticket_sla_status(ticket.id)
+        if sla_alert:
+            tickets_with_issues.append({
+                "ticket_id": ticket.id,
+                "subject": ticket.subject,
+                "priority": ticket.priority,
+                "category": ticket.category,
+                "status": ticket.status,
+                "created_at": ticket.created_at,
+                "assigned_team": ticket.assigned_team,
+                "sla_alert": sla_alert.dict(),
+                "issue_severity": sla_alert.severity
+            })
+    
+    return tickets_with_issues
+
+
+def get_sla_summary() -> Dict[str, Any]:
+    """
+    Get a summary of SLA status across all tickets.
+    
+    Returns:
+        Dict containing SLA summary
+    """
+    # Run monitoring to get current status
+    monitoring_results = monitor_all_active_tickets()
+    
+    # Get all active tickets for total count
+    open_tickets = search_tickets(status="open", limit=1000)
+    in_progress_tickets = search_tickets(status="in_progress", limit=1000)
+    total_active = len(open_tickets) + len(in_progress_tickets)
+    
+    # Count by severity
+    critical_alerts = len([a for a in monitoring_results["sla_alerts"] if a["severity"] == "critical"])
+    high_alerts = len([a for a in monitoring_results["sla_alerts"] if a["severity"] == "high"])
+    medium_alerts = len([a for a in monitoring_results["sla_alerts"] if a["severity"] == "medium"])
+    
+    return {
+        "monitoring_time": monitoring_results["monitoring_time"],
+        "total_active_tickets": total_active,
+        "tickets_with_sla_issues": len(monitoring_results["sla_alerts"]),
+        "critical_alerts": critical_alerts,
+        "high_alerts": high_alerts,
+        "medium_alerts": medium_alerts,
+        "sla_compliance_rate": (total_active - len(monitoring_results["sla_alerts"])) / total_active if total_active > 0 else 1.0
+    } 

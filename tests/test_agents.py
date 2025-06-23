@@ -6,6 +6,7 @@ from ai_ticket_agent.sub_agents.classifier.tools import classify_ticket, extract
 from ai_ticket_agent.sub_agents.assignment.tools import assign_ticket, get_team_workload
 from ai_ticket_agent.sub_agents.knowledge.tools import search_knowledge_base, generate_response
 from ai_ticket_agent.tools.database import create_ticket, get_ticket, update_ticket
+from ai_ticket_agent.sub_agents.follow_up.agent import analyze_feedback_with_llm
 
 
 class TestClassifierAgent:
@@ -168,6 +169,50 @@ class TestDatabaseTools:
         
         assert updated_ticket.status == "in_progress"
         assert updated_ticket.assigned_team == "Network Support"
+
+
+class TestFollowUpAgentLLM:
+    def test_analyze_feedback_with_llm_close(self, monkeypatch):
+        # Mock get_ticket to return a dummy ticket
+        mock_ticket = Mock()
+        mock_ticket.title = "Test Ticket"
+        mock_ticket.assigned_team = "Test Team"
+        mock_ticket.resolution_notes = "Test resolution"
+        monkeypatch.setattr(
+            "ai_ticket_agent.sub_agents.follow_up.tools.get_ticket",
+            lambda ticket_id: mock_ticket
+        )
+        
+        # Mock follow_up_agent.run() to return 'close' when called
+        mock_agent = Mock()
+        mock_agent.run.return_value = "close"
+        monkeypatch.setattr(
+            "ai_ticket_agent.sub_agents.follow_up.agent.follow_up_agent",
+            mock_agent
+        )
+        result = analyze_feedback_with_llm("dummy_ticket_id", "Thank you, the issue is resolved.")
+        assert result == "close"
+
+    def test_analyze_feedback_with_llm_reopen(self, monkeypatch):
+        # Mock get_ticket to return a dummy ticket
+        mock_ticket = Mock()
+        mock_ticket.title = "Test Ticket"
+        mock_ticket.assigned_team = "Test Team"
+        mock_ticket.resolution_notes = "Test resolution"
+        monkeypatch.setattr(
+            "ai_ticket_agent.sub_agents.follow_up.tools.get_ticket",
+            lambda ticket_id: mock_ticket
+        )
+        
+        # Mock follow_up_agent.run() to return 'reopen' when called
+        mock_agent = Mock()
+        mock_agent.run.return_value = "reopen"
+        monkeypatch.setattr(
+            "ai_ticket_agent.sub_agents.follow_up.agent.follow_up_agent",
+            mock_agent
+        )
+        result = analyze_feedback_with_llm("dummy_ticket_id", "This did not fix my problem.")
+        assert result == "reopen"
 
 
 if __name__ == "__main__":

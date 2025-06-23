@@ -1,204 +1,64 @@
 """Tools for the Follow-up Agent."""
 
-from typing import Dict, List, Any
-from pydantic import BaseModel, Field
-from ai_ticket_agent.tools.database import update_workflow_state
+from google.adk.tools import ToolContext
+from ai_ticket_agent.tools.database import get_ticket
+from datetime import datetime
 
 
-class SatisfactionCheck(BaseModel):
-    """Satisfaction check result."""
-    
-    resolved: bool = Field(description="Whether the issue was resolved")
-    satisfaction_level: str = Field(description="Satisfaction level: very_satisfied, satisfied, neutral, dissatisfied, very_dissatisfied")
-    resolution_quality: int = Field(description="Resolution quality rating 1-5")
-    response_time_rating: int = Field(description="Response time rating 1-5")
-    communication_rating: int = Field(description="Communication quality rating 1-5")
-
-
-class FeedbackResult(BaseModel):
-    """Feedback collection result."""
-    
-    feedback_text: str = Field(description="User feedback text")
-    improvement_suggestions: List[str] = Field(description="Suggestions for improvement")
-    knowledge_base_updates: List[str] = Field(description="Suggested knowledge base updates")
-    process_improvements: List[str] = Field(description="Process improvement suggestions")
-
-
-class TicketClosure(BaseModel):
-    """Ticket closure information."""
-    
-    closed: bool = Field(description="Whether ticket was successfully closed")
-    closure_reason: str = Field(description="Reason for closure")
-    resolution_summary: str = Field(description="Summary of resolution")
-    documentation_updated: bool = Field(description="Whether documentation was updated")
-    follow_up_required: bool = Field(description="Whether follow-up is required")
-
-
-class FollowUpAction(BaseModel):
-    """Follow-up action to be taken."""
-    
-    action_type: str = Field(description="Type of follow-up: reminder, escalation, closure, satisfaction_survey")
-    ticket_id: str = Field(description="Ticket identifier")
-    target_time: str = Field(description="When to perform the follow-up")
-    message_template: str = Field(description="Message template for the follow-up")
-    recipients: List[str] = Field(description="Who to send the follow-up to")
-    priority: str = Field(description="Follow-up priority: low, medium, high")
-
-
-class FollowUpSchedule(BaseModel):
-    """Schedule for follow-up actions."""
-    
-    ticket_id: str = Field(description="Ticket identifier")
-    follow_ups: List[FollowUpAction] = Field(description="Scheduled follow-up actions")
-    next_follow_up: str = Field(description="Next scheduled follow-up time")
-    escalation_threshold: str = Field(description="Time threshold for escalation")
-    auto_closure_threshold: str = Field(description="Time threshold for auto-closure")
-
-
-class CustomerSatisfaction(BaseModel):
-    """Customer satisfaction survey result."""
-    
-    ticket_id: str = Field(description="Ticket identifier")
-    satisfaction_score: int = Field(description="Satisfaction score 1-5")
-    response_time_rating: int = Field(description="Response time rating 1-5")
-    resolution_quality_rating: int = Field(description="Resolution quality rating 1-5")
-    overall_experience: str = Field(description="Overall experience description")
-    feedback_comments: str = Field(description="Additional feedback comments")
-    would_recommend: bool = Field(description="Whether customer would recommend the service")
-
-
-def schedule_follow_up(
-    ticket_id: str,
-    priority: str,
-    category: str,
-    current_status: str
-) -> FollowUpSchedule:
+def build_feedback_prompt(ticket_id: str, user_feedback: str) -> str:
     """
-    Schedule appropriate follow-up actions for a ticket.
-    
-    Args:
-        ticket_id: The ticket identifier
-        priority: The ticket priority level
-        category: The ticket category
-        current_status: Current ticket status
-        
-    Returns:
-        FollowUpSchedule: Scheduled follow-up actions
+    Build the prompt text for LLM feedback analysis.
     """
-    # Define follow-up schedules based on priority and category
-    follow_up_templates = {
-        "critical": {
-            "reminder_interval": "1 hour",
-            "escalation_threshold": "2 hours",
-            "auto_closure_threshold": "24 hours"
-        },
-        "high": {
-            "reminder_interval": "2 hours",
-            "escalation_threshold": "4 hours",
-            "auto_closure_threshold": "48 hours"
-        },
-        "medium": {
-            "reminder_interval": "4 hours",
-            "escalation_threshold": "8 hours",
-            "auto_closure_threshold": "72 hours"
-        },
-        "low": {
-            "reminder_interval": "8 hours",
-            "escalation_threshold": "24 hours",
-            "auto_closure_threshold": "168 hours"
-        }
+    ticket = get_ticket(ticket_id)
+    if not ticket:
+        print(f"❌ Ticket {ticket_id} not found for LLM analysis.")
+        return ""
+    
+    prompt_text = f"""
+A user has provided the following feedback after receiving the resolution notes for their IT support ticket:
+
+---
+Ticket ID: {ticket_id}
+Ticket Subject: {ticket.subject}
+Assigned Team: {ticket.assigned_team}
+Resolution Notes: {ticket.resolution_notes}
+User Feedback: {user_feedback}
+---
+
+Based on this feedback, should the ticket be closed (user is satisfied) or reopened (user is not satisfied)?
+Consider the following:
+- If the user expresses satisfaction, gratitude, or confirms the solution worked, respond with 'close'
+- If the user expresses dissatisfaction, mentions issues, or requests further assistance, respond with 'reopen'
+- If the feedback is ambiguous, default to 'reopen' to ensure user satisfaction
+
+Respond with only one word: 'close' or 'reopen'.
+"""
+    return prompt_text
+
+
+def store_feedback_memory(ticket_id: str, feedback: str, decision: str, tool_context: ToolContext):
+    """
+    Store feedback analysis in memory for future reference.
+    Inspired by travel-concierge memory pattern.
+    """
+    if "feedback_history" not in tool_context.state:
+        tool_context.state["feedback_history"] = []
+    
+    feedback_record = {
+        "ticket_id": ticket_id,
+        "feedback": feedback,
+        "decision": decision,
+        "timestamp": str(datetime.now())
     }
     
-    template = follow_up_templates.get(priority, follow_up_templates["medium"])
-    
-    # Create follow-up actions
-    follow_ups = [
-        FollowUpAction(
-            action_type="reminder",
-            ticket_id=ticket_id,
-            target_time=template["reminder_interval"],
-            message_template=f"Reminder: Ticket {ticket_id} is still open and requires attention.",
-            recipients=["assigned_agent"],
-            priority=priority
-        ),
-        FollowUpAction(
-            action_type="escalation",
-            ticket_id=ticket_id,
-            target_time=template["escalation_threshold"],
-            message_template=f"Escalation: Ticket {ticket_id} may need escalation if not resolved.",
-            recipients=["supervisor"],
-            priority="high"
-        )
-    ]
-    
-    # Update workflow state
-    try:
-        update_workflow_state(
-            ticket_id=ticket_id,
-            current_step="FOLLOW_UP",
-            next_step="COMPLETE",
-            step_data={"FOLLOW_UP": {
-                "scheduled_follow_ups": len(follow_ups),
-                "next_follow_up": template["reminder_interval"],
-                "priority": priority,
-                "category": category
-            }},
-            status="follow_up_scheduled"
-        )
-        print(f"Follow-up scheduled for ticket {ticket_id}")
-    except Exception as e:
-        print(f"Error updating workflow state: {e}")
-    
-    return FollowUpSchedule(
-        ticket_id=ticket_id,
-        follow_ups=follow_ups,
-        next_follow_up=template["reminder_interval"],
-        escalation_threshold=template["escalation_threshold"],
-        auto_closure_threshold=template["auto_closure_threshold"]
-    )
+    tool_context.state["feedback_history"].append(feedback_record)
+    return {"status": f"Stored feedback analysis for ticket {ticket_id}"}
 
 
-def send_satisfaction_survey(
-    ticket_id: str,
-    resolution_time: str,
-    agent_name: str
-) -> CustomerSatisfaction:
+def get_feedback_history(tool_context: ToolContext):
     """
-    Send a customer satisfaction survey after ticket resolution.
-    
-    Args:
-        ticket_id: The ticket identifier
-        resolution_time: Time taken to resolve the ticket
-        agent_name: Name of the agent who resolved the ticket
-        
-    Returns:
-        CustomerSatisfaction: Survey result (mock data for now)
+    Retrieve feedback history for analysis.
     """
-    # This would send an actual survey and collect responses
-    # For now, returning mock survey data
-    return CustomerSatisfaction(
-        ticket_id=ticket_id,
-        satisfaction_score=4,
-        response_time_rating=4,
-        resolution_quality_rating=5,
-        overall_experience="Good experience with quick resolution",
-        feedback_comments="The agent was helpful and resolved my issue quickly.",
-        would_recommend=True
-    )
+    return tool_context.state.get("feedback_history", [])
 
 
-def check_follow_up_due(
-    current_time: str
-) -> List[FollowUpAction]:
-    """
-    Check which follow-up actions are due at the current time.
-    
-    Args:
-        current_time: Current timestamp
-        
-    Returns:
-        List[FollowUpAction]: List of follow-up actions that are due
-    """
-    # This would query the database for due follow-ups
-    # For now, returning empty list
-    return [] 

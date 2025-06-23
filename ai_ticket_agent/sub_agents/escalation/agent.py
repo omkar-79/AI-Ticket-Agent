@@ -3,7 +3,13 @@
 from google.adk.agents import Agent
 from google.adk.tools import FunctionTool
 from ai_ticket_agent import prompt
-from .tools import evaluate_escalation_need, get_escalation_criteria
+from .tools import (
+    evaluate_escalation_need, 
+    get_escalation_criteria,
+    run_escalation_monitoring,
+    get_tickets_at_risk,
+    manual_escalate_ticket
+)
 
 
 escalation_agent = Agent(
@@ -14,5 +20,8 @@ escalation_agent = Agent(
     tools=[
         FunctionTool(func=evaluate_escalation_need),
         FunctionTool(func=get_escalation_criteria),
+        FunctionTool(func=run_escalation_monitoring),
+        FunctionTool(func=get_tickets_at_risk),
+        FunctionTool(func=manual_escalate_ticket),
     ],
 ) 

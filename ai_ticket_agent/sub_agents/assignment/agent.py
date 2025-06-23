@@ -3,18 +3,16 @@
 from google.adk.agents import Agent
 from google.adk.tools import FunctionTool
 from ai_ticket_agent import prompt
-from .tools import assign_ticket, get_team_workload
-from ai_ticket_agent.tools.database import continue_workflow
+from .tools import assign_ticket, continue_workflow
 
 
 assignment_agent = Agent(
     model="gemini-2.5-flash",
     name="assignment_agent",
-    description="Routes tickets to appropriate support teams based on classification",
+    description="Assigns tickets to appropriate support teams when knowledge base solutions are not available",
     instruction=prompt.ASSIGNMENT_AGENT_INSTR,
     tools=[
         FunctionTool(func=assign_ticket),
-        FunctionTool(func=get_team_workload),
         FunctionTool(func=continue_workflow),
     ],
 ) 

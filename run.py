@@ -86,6 +86,61 @@ def run_linting():
     subprocess.run([sys.executable, "-m", "flake8", "ai_ticket_agent/", "tests/"])
 
 
+def run_monitoring():
+    """Run the monitoring system."""
+    print("🔍 Starting monitoring system...")
+    
+    # Import monitoring functions
+    sys.path.append('.')
+    from ai_ticket_agent.tools.scheduler import start_monitoring_scheduler, get_scheduler_status
+    from ai_ticket_agent.tools.monitoring import run_monitoring_cycle
+    
+    # Start the monitoring scheduler
+    print("🚀 Starting monitoring scheduler (5-minute intervals)...")
+    start_monitoring_scheduler(interval_minutes=5)
+    
+    try:
+        # Keep the monitoring system running
+        print("✅ Monitoring system is running. Press Ctrl+C to stop.")
+        while True:
+            import time
+            time.sleep(60)  # Check status every minute
+            
+            # Show status
+            status = get_scheduler_status()
+            if status['running']:
+                print(f"📊 Monitoring status: {status['run_count']} cycles completed, {status['error_count']} errors")
+            
+    except KeyboardInterrupt:
+        print("\n🛑 Stopping monitoring system...")
+        from ai_ticket_agent.tools.scheduler import stop_monitoring_scheduler
+        stop_monitoring_scheduler()
+        print("✅ Monitoring system stopped")
+
+
+def run_monitoring_test():
+    """Run a single monitoring cycle for testing."""
+    print("🧪 Running monitoring test...")
+    
+    # Import monitoring functions
+    sys.path.append('.')
+    from ai_ticket_agent.tools.monitoring import run_monitoring_cycle
+    
+    # Run a single monitoring cycle
+    results = run_monitoring_cycle()
+    
+    print("📊 Monitoring Test Results:")
+    print(f"  - Tickets checked: {results['monitoring_results']['tickets_checked']}")
+    print(f"  - Escalations found: {results['monitoring_results']['summary']['escalations_needed']}")
+    print(f"  - SLA alerts: {results['monitoring_results']['summary']['sla_alerts']}")
+    print(f"  - Actions taken: {len(results['actions_taken'])}")
+    
+    if results['actions_taken']:
+        print("\nActions taken:")
+        for action in results['actions_taken']:
+            print(f"  - {action.get('ticket_id', 'Unknown')}: {action.get('actions_taken', [])}")
+
+
 def show_status():
     """Show system status and configuration."""
     print("📊 AI Ticket Agent System Status")
@@ -118,14 +173,30 @@ def show_status():
         status = "✓" if exists else "✗"
         print(f"  {status} {file}")
     
+    # Check monitoring status
+    try:
+        sys.path.append('.')
+        from ai_ticket_agent.tools.scheduler import get_scheduler_status
+        status = get_scheduler_status()
+        print(f"\nMonitoring System:")
+        print(f"  {'✓' if status['running'] else '✗'} Status: {'Running' if status['running'] else 'Stopped'}")
+        print(f"  📊 Cycles completed: {status['run_count']}")
+        print(f"  ⚠️  Errors: {status['error_count']}")
+        if status['last_run']:
+            print(f"  🕐 Last run: {status['last_run']}")
+    except Exception as e:
+        print(f"\nMonitoring System: Error checking status - {e}")
+    
     print("\nAvailable Commands:")
-    print("  python run.py dev      - Start development server")
-    print("  python run.py api      - Start API server only")
-    print("  python run.py web      - Start ADK web interface")
-    print("  python run.py cli      - Start ADK CLI interface")
-    print("  python run.py test     - Run tests")
-    print("  python run.py lint     - Run code linting")
-    print("  python run.py status   - Show system status")
+    print("  python run.py dev           - Start development server")
+    print("  python run.py api           - Start API server only")
+    print("  python run.py web           - Start ADK web interface")
+    print("  python run.py cli           - Start ADK CLI interface")
+    print("  python run.py monitor       - Start monitoring system")
+    print("  python run.py monitor-test  - Run single monitoring cycle")
+    print("  python run.py test          - Run tests")
+    print("  python run.py lint          - Run code linting")
+    print("  python run.py status        - Show system status")
 
 
 def main():
@@ -135,16 +206,18 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run.py dev      # Start development server
-  python run.py api      # Start API server only
-  python run.py web      # Start ADK web interface
-  python run.py test     # Run tests
+  python run.py dev           # Start development server
+  python run.py api           # Start API server only
+  python run.py web           # Start ADK web interface
+  python run.py monitor       # Start monitoring system
+  python run.py monitor-test  # Test monitoring system
+  python run.py test          # Run tests
         """
     )
     
     parser.add_argument(
         "mode",
-        choices=["dev", "api", "web", "cli", "test", "lint", "status"],
+        choices=["dev", "api", "web", "cli", "monitor", "monitor-test", "test", "lint", "status"],
         help="Mode to run the system in"
     )
     
@@ -166,6 +239,10 @@ Examples:
         run_adk_web()
     elif args.mode == "cli":
         run_adk_cli()
+    elif args.mode == "monitor":
+        run_monitoring()
+    elif args.mode == "monitor-test":
+        run_monitoring_test()
     elif args.mode == "test":
         run_tests()
     elif args.mode == "lint":
