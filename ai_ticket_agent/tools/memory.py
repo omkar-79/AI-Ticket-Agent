@@ -14,6 +14,17 @@ def _load_initial_state(callback_context: CallbackContext) -> None:
         callback_context: The ADK callback context which contains the session
     """
     session_state = callback_context.state
+    
+    # Initialize workflow state
+    if "workflow_state" not in session_state:
+        session_state["workflow_state"] = {
+            "current_step": "CLASSIFICATION",
+            "ticket_id": None,
+            "ticket_status": None,
+            "completed_steps": [],
+            "next_step": "KNOWLEDGE_SEARCH"
+        }
+    
     # Load default configuration
     default_config = {
         "sla_rules": {
@@ -119,4 +130,79 @@ def get_ticket_state(session, ticket_id: str) -> Dict[str, Any]:
     Returns:
         The ticket state dictionary
     """
-    return session.state.get("active_tickets", {}).get(ticket_id, {}) 
+    return session.state.get("active_tickets", {}).get(ticket_id, {})
+
+
+def update_workflow_step(session, step: str, ticket_id: str = None, status: str = None) -> None:
+    """
+    Update the current workflow step in the session.
+    
+    Args:
+        session: The ADK session
+        step: The current workflow step
+        ticket_id: The ticket identifier
+        status: The ticket status
+    """
+    if "workflow_state" not in session.state:
+        session.state["workflow_state"] = {}
+    
+    workflow_state = session.state["workflow_state"]
+    workflow_state["current_step"] = step
+    
+    if ticket_id:
+        workflow_state["ticket_id"] = ticket_id
+    
+    if status:
+        workflow_state["ticket_status"] = status
+    
+    # Update completed steps
+    if step not in workflow_state.get("completed_steps", []):
+        if "completed_steps" not in workflow_state:
+            workflow_state["completed_steps"] = []
+        workflow_state["completed_steps"].append(step)
+    
+    # Set next step based on current step
+    step_sequence = ["CLASSIFICATION", "KNOWLEDGE_SEARCH", "ASSIGNMENT", "FOLLOW_UP"]
+    try:
+        current_index = step_sequence.index(step)
+        if current_index < len(step_sequence) - 1:
+            workflow_state["next_step"] = step_sequence[current_index + 1]
+        else:
+            workflow_state["next_step"] = "COMPLETED"
+    except ValueError:
+        workflow_state["next_step"] = "UNKNOWN"
+
+
+def get_workflow_state(session) -> Dict[str, Any]:
+    """
+    Get the current workflow state from the session.
+    
+    Args:
+        session: The ADK session
+        
+    Returns:
+        The workflow state dictionary
+    """
+    return session.state.get("workflow_state", {
+        "current_step": "CLASSIFICATION",
+        "ticket_id": None,
+        "ticket_status": None,
+        "completed_steps": [],
+        "next_step": "KNOWLEDGE_SEARCH"
+    })
+
+
+def reset_workflow_state(session) -> None:
+    """
+    Reset the workflow state to initial values.
+    
+    Args:
+        session: The ADK session
+    """
+    session.state["workflow_state"] = {
+        "current_step": "CLASSIFICATION",
+        "ticket_id": None,
+        "ticket_status": None,
+        "completed_steps": [],
+        "next_step": "KNOWLEDGE_SEARCH"
+    } 

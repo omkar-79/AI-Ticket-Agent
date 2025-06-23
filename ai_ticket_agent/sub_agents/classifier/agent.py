@@ -4,6 +4,7 @@ from google.adk.agents import Agent
 from google.adk.tools import FunctionTool
 from ai_ticket_agent import prompt
 from .tools import classify_ticket, extract_priority_indicators
+from ai_ticket_agent.tools.database import continue_workflow
 
 
 classifier_agent = Agent(
@@ -14,5 +15,6 @@ classifier_agent = Agent(
     tools=[
         FunctionTool(func=classify_ticket),
         FunctionTool(func=extract_priority_indicators),
+        FunctionTool(func=continue_workflow),
     ],
 ) 

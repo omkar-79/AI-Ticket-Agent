@@ -38,6 +38,19 @@ class TicketUpdate(BaseModel):
     timestamp: str = Field(description="Update timestamp")
 
 
+class WorkflowState(BaseModel):
+    """Workflow state for ticket processing."""
+    
+    ticket_id: str = Field(description="Ticket identifier")
+    current_step: str = Field(description="Current workflow step")
+    next_step: str = Field(description="Next workflow step")
+    completed_steps: List[str] = Field(description="List of completed steps")
+    step_data: Dict[str, Any] = Field(description="Data from each step")
+    status: str = Field(description="Workflow status: active, completed, failed")
+    created_at: str = Field(description="Creation timestamp")
+    updated_at: str = Field(description="Last update timestamp")
+
+
 # SQLite database setup
 DB_PATH = "helpdesk.db"
 
@@ -79,6 +92,21 @@ def init_database():
             new_value TEXT NOT NULL,
             updated_by TEXT NOT NULL,
             timestamp TEXT NOT NULL,
+            FOREIGN KEY (ticket_id) REFERENCES tickets (id)
+        )
+    ''')
+    
+    # Create workflow_state table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS workflow_state (
+            ticket_id TEXT PRIMARY KEY,
+            current_step TEXT NOT NULL,
+            next_step TEXT NOT NULL,
+            completed_steps TEXT NOT NULL,
+            step_data TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
             FOREIGN KEY (ticket_id) REFERENCES tickets (id)
         )
     ''')
@@ -181,6 +209,53 @@ def create_ticket(
     conn.close()
     
     return ticket
+
+
+def create_ticket_and_start_workflow(
+    subject: str,
+    description: str,
+    user_email: str,
+    source: str = "user_message"
+) -> Dict[str, Any]:
+    """
+    Creates a new ticket and initializes its workflow state in the database.
+    This should be the very first action for any new user issue.
+
+    Args:
+        subject: The subject line of the ticket.
+        description: The full description of the issue.
+        user_email: The email address of the user reporting the issue.
+        source: The source of the ticket (e.g., 'user_message', 'email').
+
+    Returns:
+        A dictionary containing the new ticket_id and the initial workflow state.
+    """
+    try:
+        # Create the ticket with a default 'needs classification' state
+        ticket = create_ticket(
+            subject=subject,
+            description=description,
+            category="uncategorized",
+            priority="medium",
+            created_by=user_email,
+            tags=[]
+        )
+
+        # Initialize the workflow for the new ticket
+        workflow_state = create_workflow_state(
+            ticket_id=ticket.id,
+            current_step="START",
+            next_step="CLASSIFICATION"
+        )
+        
+        return {
+            "ticket_id": ticket.id,
+            "message": "Ticket created and workflow initiated.",
+            "next_step": workflow_state.next_step
+        }
+    except Exception as e:
+        print(f"Error in create_ticket_and_start_workflow: {e}")
+        return {"error": str(e)}
 
 
 def get_ticket(
@@ -446,4 +521,340 @@ def close_ticket_db(
     Returns:
         Ticket: The closed ticket
     """
-    return update_ticket(ticket_id, "status", "closed", "") 
+    return update_ticket(ticket_id, "status", "closed", "")
+
+
+def create_workflow_state(
+    ticket_id: str,
+    current_step: str = "CLASSIFICATION",
+    next_step: str = "KNOWLEDGE_SEARCH"
+) -> WorkflowState:
+    """
+    Create a new workflow state for a ticket.
+    
+    Args:
+        ticket_id: The ticket identifier
+        current_step: The current workflow step
+        next_step: The next workflow step
+        
+    Returns:
+        WorkflowState: The created workflow state
+    """
+    init_database()
+    
+    workflow_state = WorkflowState(
+        ticket_id=ticket_id,
+        current_step=current_step,
+        next_step=next_step,
+        completed_steps=[],
+        step_data={},
+        status="active",
+        created_at=datetime.now().isoformat(),
+        updated_at=datetime.now().isoformat()
+    )
+    
+    # Save to database
+    db_path = os.getenv("DATABASE_URL", "sqlite:///./helpdesk.db").replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        INSERT OR REPLACE INTO workflow_state 
+        (ticket_id, current_step, next_step, completed_steps, step_data, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        workflow_state.ticket_id,
+        workflow_state.current_step,
+        workflow_state.next_step,
+        ",".join(workflow_state.completed_steps),
+        str(workflow_state.step_data),
+        workflow_state.status,
+        workflow_state.created_at,
+        workflow_state.updated_at
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    return workflow_state
+
+
+def get_workflow_state(
+    ticket_id: str
+) -> Optional[WorkflowState]:
+    """
+    Get the workflow state for a ticket.
+    
+    Args:
+        ticket_id: The ticket identifier
+        
+    Returns:
+        Optional[WorkflowState]: The workflow state if found, None otherwise
+    """
+    init_database()
+    
+    db_path = os.getenv("DATABASE_URL", "sqlite:///./helpdesk.db").replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT ticket_id, current_step, next_step, completed_steps, step_data, status, created_at, updated_at
+        FROM workflow_state
+        WHERE ticket_id = ?
+    ''', (ticket_id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        # Parse step_data from string back to dict
+        import ast
+        step_data = ast.literal_eval(row[4]) if row[4] else {}
+        completed_steps = row[3].split(",") if row[3] else []
+        
+        return WorkflowState(
+            ticket_id=row[0],
+            current_step=row[1],
+            next_step=row[2],
+            completed_steps=completed_steps,
+            step_data=step_data,
+            status=row[5],
+            created_at=row[6],
+            updated_at=row[7]
+        )
+    
+    return None
+
+
+def update_workflow_state(
+    ticket_id: str,
+    current_step: str = None,
+    next_step: str = None,
+    step_data: Dict[str, Any] = None,
+    status: str = None
+) -> WorkflowState:
+    """
+    Update the workflow state for a ticket.
+    
+    Args:
+        ticket_id: The ticket identifier
+        current_step: The current workflow step
+        next_step: The next workflow step
+        step_data: Data to store for the current step
+        status: The workflow status
+        
+    Returns:
+        WorkflowState: The updated workflow state
+    """
+    init_database()
+    
+    # Get current state
+    current_state = get_workflow_state(ticket_id)
+    if not current_state:
+        return create_workflow_state(ticket_id, current_step or "CLASSIFICATION", next_step or "KNOWLEDGE_SEARCH")
+    
+    # Update fields
+    if current_step:
+        current_state.current_step = current_step
+        if current_step not in current_state.completed_steps:
+            current_state.completed_steps.append(current_step)
+    
+    if next_step:
+        current_state.next_step = next_step
+    
+    if step_data:
+        current_state.step_data.update(step_data)
+    
+    if status:
+        current_state.status = status
+    
+    current_state.updated_at = datetime.now().isoformat()
+    
+    # Save to database
+    db_path = os.getenv("DATABASE_URL", "sqlite:///./helpdesk.db").replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        UPDATE workflow_state 
+        SET current_step = ?, next_step = ?, completed_steps = ?, step_data = ?, status = ?, updated_at = ?
+        WHERE ticket_id = ?
+    ''', (
+        current_state.current_step,
+        current_state.next_step,
+        ",".join(current_state.completed_steps),
+        str(current_state.step_data),
+        current_state.status,
+        current_state.updated_at,
+        current_state.ticket_id
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    return current_state
+
+
+def get_next_workflow_step(
+    ticket_id: str
+) -> Optional[str]:
+    """
+    Get the next workflow step for a ticket.
+    
+    Args:
+        ticket_id: The ticket identifier
+        
+    Returns:
+        Optional[str]: The next step if found, None otherwise
+    """
+    workflow_state = get_workflow_state(ticket_id)
+    return workflow_state.next_step if workflow_state else None
+
+
+def get_step_data(
+    ticket_id: str,
+    step: str
+) -> Dict[str, Any]:
+    """
+    Get data from a specific workflow step.
+    
+    Args:
+        ticket_id: The ticket identifier
+        step: The workflow step
+        
+    Returns:
+        Dict[str, Any]: The step data
+    """
+    workflow_state = get_workflow_state(ticket_id)
+    if workflow_state and step in workflow_state.step_data:
+        return workflow_state.step_data[step]
+    return {}
+
+
+def set_step_data(
+    ticket_id: str,
+    step: str,
+    data: Dict[str, Any]
+) -> WorkflowState:
+    """
+    Set data for a specific workflow step.
+    
+    Args:
+        ticket_id: The ticket identifier
+        step: The workflow step
+        data: The data to store
+        
+    Returns:
+        WorkflowState: The updated workflow state
+    """
+    workflow_state = get_workflow_state(ticket_id)
+    if not workflow_state:
+        workflow_state = create_workflow_state(ticket_id)
+    
+    step_data = {step: data}
+    return update_workflow_state(ticket_id, step_data=step_data)
+
+
+def get_current_workflow_status(
+    ticket_id: str
+) -> Dict[str, Any]:
+    """
+    Get the current workflow status for a ticket.
+    
+    Args:
+        ticket_id: The ticket identifier
+        
+    Returns:
+        Dict[str, Any]: Current workflow status with next step and completed steps
+    """
+    workflow_state = get_workflow_state(ticket_id)
+    if not workflow_state:
+        return {
+            "status": "not_found",
+            "current_step": None,
+            "next_step": "CLASSIFICATION",
+            "completed_steps": [],
+            "message": "No workflow state found for this ticket"
+        }
+    
+    return {
+        "status": workflow_state.status,
+        "current_step": workflow_state.current_step,
+        "next_step": workflow_state.next_step,
+        "completed_steps": workflow_state.completed_steps,
+        "message": f"Current step: {workflow_state.current_step}, Next step: {workflow_state.next_step}"
+    }
+
+
+def get_workflow_summary(
+    ticket_id: str
+) -> Dict[str, Any]:
+    """
+    Get a summary of the workflow for a ticket including all step data.
+    
+    Args:
+        ticket_id: The ticket identifier
+        
+    Returns:
+        Dict[str, Any]: Complete workflow summary
+    """
+    workflow_state = get_workflow_state(ticket_id)
+    if not workflow_state:
+        return {"error": "No workflow state found"}
+    
+    return {
+        "ticket_id": workflow_state.ticket_id,
+        "status": workflow_state.status,
+        "current_step": workflow_state.current_step,
+        "next_step": workflow_state.next_step,
+        "completed_steps": workflow_state.completed_steps,
+        "step_data": workflow_state.step_data,
+        "created_at": workflow_state.created_at,
+        "updated_at": workflow_state.updated_at
+    }
+
+
+def continue_workflow(
+    ticket_id: str
+) -> Dict[str, Any]:
+    """
+    Continue the workflow by checking the current status and determining the next action.
+    
+    Args:
+        ticket_id: The ticket identifier
+        
+    Returns:
+        Dict[str, Any]: Information about the next step in the workflow
+    """
+    workflow_state = get_workflow_state(ticket_id)
+    if not workflow_state:
+        return {
+            "error": "No workflow state found",
+            "next_action": "create_workflow",
+            "message": "Workflow state not found for this ticket"
+        }
+    
+    next_step = workflow_state.next_step
+    
+    # Map next steps to agent names
+    step_to_agent = {
+        "CLASSIFICATION": "classifier_agent",
+        "KNOWLEDGE_SEARCH": "knowledge_agent", 
+        "ASSIGNMENT": "assignment_agent",
+        "FOLLOW_UP": "follow_up_agent"
+    }
+    
+    if next_step in step_to_agent:
+        return {
+            "status": "continue",
+            "next_step": next_step,
+            "next_agent": step_to_agent[next_step],
+            "ticket_id": ticket_id,
+            "message": f"Continue workflow: transfer to {step_to_agent[next_step]} for {next_step}"
+        }
+    else:
+        return {
+            "status": "complete",
+            "next_step": next_step,
+            "message": f"Workflow complete. Final step: {next_step}"
+        } 

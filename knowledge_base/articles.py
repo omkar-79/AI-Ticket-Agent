@@ -255,6 +255,61 @@ KNOWLEDGE_ARTICLES = [
         "created_at": "2024-01-05T13:00:00Z",
         "updated_at": "2024-01-05T13:00:00Z",
         "relevance_score": 0.90
+    },
+    {
+        "id": "kb-007",
+        "title": "WiFi Connection Troubleshooting Guide",
+        "content": """
+# WiFi Connection Troubleshooting Guide
+
+## Common WiFi Issues and Solutions
+
+### Issue: Cannot connect to WiFi
+**Solution:**
+1. Check if WiFi is enabled on your device
+2. Verify you're connecting to the correct network
+3. Enter the correct WiFi password
+4. Restart your WiFi router/modem
+5. Try connecting from a different location
+
+### Issue: WiFi keeps disconnecting
+**Solution:**
+1. Check WiFi signal strength
+2. Move closer to the WiFi router
+3. Restart your device's WiFi adapter
+4. Update WiFi drivers
+5. Check for interference from other devices
+
+### Issue: Slow WiFi connection
+**Solution:**
+1. Check your distance from the router
+2. Close unnecessary applications using internet
+3. Restart your WiFi router
+4. Check for other devices using the network
+5. Consider upgrading your WiFi plan
+
+### Issue: WiFi shows connected but no internet
+**Solution:**
+1. Check if other devices have internet access
+2. Restart your WiFi router
+3. Check your device's DNS settings
+4. Try forgetting and reconnecting to the network
+5. Contact your internet service provider
+
+### Issue: WiFi password not working
+**Solution:**
+1. Double-check the password spelling
+2. Make sure caps lock is off
+3. Try typing the password in a text editor first
+4. Reset your WiFi router to factory settings
+5. Contact IT support for network credentials
+        """,
+        "category": "network",
+        "tags": ["wifi", "wireless", "connectivity", "network", "internet", "router"],
+        "author": "Network Team",
+        "created_at": "2024-01-20T09:00:00Z",
+        "updated_at": "2024-01-20T09:00:00Z",
+        "relevance_score": 0.95
     }
 ]
 

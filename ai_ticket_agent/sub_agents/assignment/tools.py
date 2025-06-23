@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Any
 from pydantic import BaseModel, Field
+from ai_ticket_agent.tools.database import update_ticket_fields, get_step_data, update_workflow_state
 
 
 class TicketAssignment(BaseModel):
@@ -27,32 +28,94 @@ class TeamWorkload(BaseModel):
 
 
 def assign_ticket(
-    ticket_id: str,
-    classification: Dict[str, Any],
-    priority: str,
-    category: str
+    ticket_id: str
 ) -> TicketAssignment:
     """
-    Assign a ticket to the appropriate team and queue based on classification.
-    
+    Assign a ticket to the appropriate team and queue based on its classification.
+
     Args:
-        ticket_id: The unique ticket identifier
-        classification: The classification result from classifier agent
-        priority: The ticket priority level
-        category: The ticket category
+        ticket_id: The unique ticket identifier.
         
     Returns:
-        TicketAssignment: Assignment result with team and queue information
+        TicketAssignment: Assignment result with team and queue information.
     """
+    # Get classification data from the previous workflow step
+    classification_data = get_step_data(ticket_id, "CLASSIFICATION")
+    if not classification_data:
+        # Handle cases where classification data is missing
+        print(f"Error: Could not find classification data for ticket {ticket_id}")
+        # Return a default or error assignment
+        return TicketAssignment(
+            team="General IT",
+            queue="standard",
+            agent="unassigned",
+            estimated_response_time="N/A",
+            sla_target="N/A",
+            routing_reason="Classification data was not found."
+        )
+
+    priority = classification_data.get("priority", "medium")
+    category = classification_data.get("category", "general")
+    suggested_team = classification_data.get("suggested_team")
+    
+    # Determine team based on category
+    team_mapping = {
+        "hardware": "Hardware Support",
+        "software": "Software Support",
+        "network": "Network Support",
+        "access": "Access Management",
+        "security": "Security Team",
+        "email": "Email Support",
+        "general": "General IT"
+    }
+    
+    team = suggested_team or team_mapping.get(category, "General IT")
+    
+    # Determine queue based on priority
+    queue_mapping = {
+        "critical": "urgent",
+        "high": "high",
+        "medium": "standard",
+        "low": "low"
+    }
+    queue = queue_mapping.get(priority, "standard")
+    
     # This would use business rules and team availability to make assignment
-    return TicketAssignment(
-        team="Network Support",
-        queue="standard",
+    assignment = TicketAssignment(
+        team=team,
+        queue=queue,
         agent="auto-assign",
         estimated_response_time="2 hours",
         sla_target="4 hours",
-        routing_reason="VPN connectivity issue matches network support expertise"
+        routing_reason=f"{category} issue matches {team} expertise"
     )
+    
+    # Update ticket in database with assignment
+    try:
+        update_ticket_fields(
+            ticket_id=ticket_id,
+            updates={
+                "assigned_team": assignment.team,
+                "status": "assigned",
+                "assigned_agent": assignment.agent
+            }
+        )
+        
+        # Update workflow state
+        update_workflow_state(
+            ticket_id=ticket_id,
+            current_step="ASSIGNMENT",
+            next_step="FOLLOW_UP",
+            step_data={"ASSIGNMENT": assignment.dict()},
+            status="assigned"
+        )
+        
+        print(f"Ticket {ticket_id} assigned to {assignment.team}")
+        
+    except Exception as e:
+        print(f"Error updating ticket assignment: {e}")
+    
+    return assignment
 
 
 def get_team_workload(

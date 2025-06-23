@@ -2,7 +2,8 @@
 
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
-from knowledge_base.articles import search_articles, get_article_by_id, get_articles
+from knowledge_base.articles import search_articles
+from ai_ticket_agent.tools.database import get_workflow_state, get_step_data, update_workflow_state
 
 
 class KnowledgeArticle(BaseModel):
@@ -36,36 +37,74 @@ class ResourceSuggestion(BaseModel):
 
 
 def search_knowledge_base(
-    query: str,
-    category: str = None,
-    max_results: int = 5
+    ticket_id: str,
+    query: Optional[str] = None,
+    category: Optional[str] = None,
+    limit: int = 5
 ) -> List[KnowledgeArticle]:
     """
     Search the knowledge base for relevant articles and solutions.
     
     Args:
-        query: The search query
-        category: The category to search within
-        max_results: Maximum number of results to return
+        ticket_id: The ticket identifier for workflow state management.
+        query: The search query.
+        category: The category to search within.
+        limit: Maximum number of results to return.
         
     Returns:
-        List[KnowledgeArticle]: Relevant knowledge articles
+        List[KnowledgeArticle]: Relevant knowledge articles.
     """
-    # Use local knowledge base
-    articles = search_articles(query, category, max_results)
+    # Get classification data from the previous step to enrich the search
+    classification_data = get_step_data(ticket_id, "CLASSIFICATION")
+    if classification_data:
+        if not query:
+            query = " ".join(classification_data.get("keywords", []))
+        if not category:
+            category = classification_data.get("category")
     
-    # Convert to KnowledgeArticle objects
+    articles = search_articles(query=query, category=category, max_results=limit)
+    
     knowledge_articles = []
     for article in articles:
         knowledge_articles.append(KnowledgeArticle(
             title=article["title"],
             content=article["content"],
             category=article["category"],
-            relevance_score=article["relevance_score"],
+            relevance_score=article.get("relevance_score", 0.0),
             last_updated=article["updated_at"],
             author=article["author"]
         ))
     
+    # Update workflow state based on search results
+    if ticket_id:
+        if knowledge_articles:
+            # Found solutions, move to follow-up
+            next_step = "FOLLOW_UP"
+            status = "resolved"
+            print(f"Knowledge base search found {len(knowledge_articles)} solutions, moving to {next_step}")
+        else:
+            # No solutions found, move to assignment
+            next_step = "ASSIGNMENT"
+            status = "open"
+            print(f"No knowledge base solutions found, moving to {next_step}")
+        
+        # Store knowledge search results
+        update_workflow_state(
+            ticket_id=ticket_id,
+            current_step="KNOWLEDGE_SEARCH",
+            next_step=next_step,
+            step_data={
+                "KNOWLEDGE_SEARCH": {
+                    "articles_found": len(knowledge_articles),
+                    "articles": [{"title": a.title, "category": a.category} for a in knowledge_articles],
+                    "query": query,
+                    "category": category
+                }
+            },
+            status=status
+        )
+    
+    print(f"Knowledge base search found {len(knowledge_articles)} articles")
     return knowledge_articles
 
 
@@ -113,7 +152,7 @@ def generate_response(
         solution_steps=solution_steps[:5],  # Limit to 5 steps
         related_articles=[article["title"]],
         escalation_instructions="If these steps don't resolve the issue, please reply to this ticket and we'll escalate to a specialist.",
-        confidence=article["relevance_score"]
+        confidence=article.get("relevance_score", 0.0)
     )
 
 
@@ -131,8 +170,19 @@ def suggest_resources(
     Returns:
         ResourceSuggestion: Suggested resources and tools
     """
-    # Map issue types to resources
     resource_map = {
+        "wifi": {
+            "documentation_links": [
+                "https://company.com/wifi-setup-guide",
+                "https://company.com/network-troubleshooting"
+            ],
+            "training_materials": [
+                "https://company.com/training/wifi-basics",
+                "https://company.com/training/network-security"
+            ],
+            "tools": ["Network Diagnostics Tool", "WiFi Analyzer"],
+            "contacts": ["network-support@company.com", "IT Helpdesk: x1234"]
+        },
         "vpn": {
             "documentation_links": [
                 "https://company.com/vpn-setup-guide",
@@ -183,7 +233,6 @@ def suggest_resources(
         }
     }
     
-    # Default resources
     default_resources = {
         "documentation_links": ["https://company.com/it-helpdesk"],
         "training_materials": ["https://company.com/training"],
@@ -191,7 +240,6 @@ def suggest_resources(
         "contacts": ["it-helpdesk@company.com", "IT Helpdesk: x1234"]
     }
     
-    # Find matching resources
     issue_lower = issue_type.lower()
     resources = default_resources
     

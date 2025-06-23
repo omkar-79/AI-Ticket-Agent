@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Any
 from pydantic import BaseModel, Field
+from ai_ticket_agent.tools.database import update_workflow_state
 
 
 class SatisfactionCheck(BaseModel):
@@ -129,6 +130,24 @@ def schedule_follow_up(
             priority="high"
         )
     ]
+    
+    # Update workflow state
+    try:
+        update_workflow_state(
+            ticket_id=ticket_id,
+            current_step="FOLLOW_UP",
+            next_step="COMPLETE",
+            step_data={"FOLLOW_UP": {
+                "scheduled_follow_ups": len(follow_ups),
+                "next_follow_up": template["reminder_interval"],
+                "priority": priority,
+                "category": category
+            }},
+            status="follow_up_scheduled"
+        )
+        print(f"Follow-up scheduled for ticket {ticket_id}")
+    except Exception as e:
+        print(f"Error updating workflow state: {e}")
     
     return FollowUpSchedule(
         ticket_id=ticket_id,
