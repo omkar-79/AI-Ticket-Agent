@@ -6,6 +6,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 
 class NotificationConfig(BaseModel):
@@ -129,16 +131,28 @@ def send_slack_notification(
         print(f"Slack notification disabled. Would send to {channel}: {message}")
         return True
     
+    if not config.slack_bot_token or not config.slack_channel_id:
+        print("❌ Slack bot token or channel ID not set. Cannot send Slack notification.")
+        return False
+
+    client = WebClient(token=config.slack_bot_token)
     try:
-        # This would use the Slack API to send the message
-        # For now, just print the message
-        print(f"Slack notification to {channel}: {message}")
-        if blocks:
-            print(f"With blocks: {blocks}")
-        return True
-        
+        response = client.chat_postMessage(
+            channel=channel,
+            text=message,
+            blocks=blocks if blocks else None
+        )
+        if response["ok"]:
+            print(f"✅ Slack notification sent to {channel}: {message}")
+            return True
+        else:
+            print(f"❌ Failed to send Slack notification: {response['error']}")
+            return False
+    except SlackApiError as e:
+        print(f"❌ Slack API error: {e.response['error']}")
+        return False
     except Exception as e:
-        print(f"Failed to send Slack notification: {e}")
+        print(f"❌ Unexpected error sending Slack notification: {e}")
         return False
 
 
@@ -311,6 +325,163 @@ Please review and take action if needed.
     )
     
     return email_success and slack_success
+
+
+def send_team_assignment_notification(
+    ticket_id: str,
+    ticket_data: Dict[str, Any],
+    previous_team: Optional[str] = None
+) -> bool:
+    """
+    Send a Slack notification when a ticket is assigned to a team.
+    
+    Args:
+        ticket_id: The ticket identifier
+        ticket_data: Ticket data including assignment details
+        previous_team: The previous team (if this is a reassignment)
+        
+    Returns:
+        bool: True if notification was sent successfully
+    """
+    config = get_notification_config()
+    
+    if not config.slack_enabled:
+        print(f"Slack notification disabled. Would send team assignment notification for {ticket_id}")
+        return True
+    
+    assigned_team = ticket_data.get('assigned_team', 'Unassigned')
+    priority = ticket_data.get('priority', 'MEDIUM')
+    category = ticket_data.get('category', 'general')
+    subject = ticket_data.get('subject', 'No subject')
+    description = ticket_data.get('description', 'No description')
+    
+    # Determine notification type
+    if previous_team and previous_team != assigned_team:
+        notification_type = "reassigned"
+        title = f"🔄 Ticket Reassigned: {ticket_id}"
+        color = "#FF8C00"  # Orange for reassignment
+    else:
+        notification_type = "assigned"
+        title = f"📋 New Ticket Assigned: {ticket_id}"
+        color = "#36A64F"  # Green for new assignment
+    
+    # Create rich Slack blocks
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": title,
+                "emoji": True
+            }
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Ticket ID:*\n`{ticket_id}`"
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Priority:*\n{priority}"
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Category:*\n{category}"
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Assigned Team:*\n{assigned_team}"
+                }
+            ]
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Subject:*\n{subject}"
+            }
+        }
+    ]
+    
+    # Add description if it's not too long
+    if description and len(description) < 2000:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Description:*\n{description}"
+            }
+        })
+    
+    # Add reassignment info if applicable
+    if notification_type == "reassigned":
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"🔄 Reassigned from *{previous_team}* to *{assigned_team}*"
+                }
+            ]
+        })
+    
+    # Add action buttons
+    blocks.append({
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "View Ticket",
+                    "emoji": True
+                },
+                "style": "primary",
+                "value": ticket_id,
+                "action_id": f"view_ticket_{ticket_id}"
+            },
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Accept Assignment",
+                    "emoji": True
+                },
+                "style": "primary",
+                "value": ticket_id,
+                "action_id": f"accept_assignment_{ticket_id}"
+            }
+        ]
+    })
+    
+    # Create the message text (fallback for notifications)
+    message = f"""
++{title}
++
++**Subject:** {subject}
++**Priority:** {priority}
++**Category:** {category}
++**Assigned Team:** {assigned_team}
++
++**Description:**
++{description[:200]}{'...' if len(description) > 200 else ''}
++    """.strip()
+    
+    # Send the notification
+    success = send_slack_notification(
+        channel=config.slack_channel_id,
+        message=message,
+        blocks=blocks
+    )
+    
+    if success:
+        print(f"✅ Team assignment notification sent for ticket {ticket_id} to {assigned_team}")
+    else:
+        print(f"❌ Failed to send team assignment notification for ticket {ticket_id}")
+    
+    return success
 
 
 def send_notification(

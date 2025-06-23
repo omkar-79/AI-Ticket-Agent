@@ -3,6 +3,7 @@
 from typing import Dict, List, Any
 from pydantic import BaseModel, Field
 from ai_ticket_agent.tools.database import update_ticket_fields, get_step_data, update_workflow_state
+from ai_ticket_agent.tools.notifications import send_team_assignment_notification
 
 
 class TicketAssignment(BaseModel):
@@ -112,10 +113,56 @@ def assign_ticket(
         
         print(f"Ticket {ticket_id} assigned to {assignment.team}")
         
+        # Send team assignment notification
+        ticket_data = {
+            "subject": classification_data.get("subject", "No subject"),
+            "priority": priority.upper(),
+            "category": category,
+            "assigned_team": assignment.team,
+            "description": classification_data.get("description", "No description")
+        }
+        
+        notify_team_assignment(ticket_id, ticket_data)
+        
     except Exception as e:
         print(f"Error updating ticket assignment: {e}")
     
     return assignment
+
+
+def notify_team_assignment(
+    ticket_id: str,
+    ticket_data: Dict[str, Any],
+    previous_team: str = None
+) -> bool:
+    """
+    Send a Slack notification when a ticket is assigned to a team.
+    
+    Args:
+        ticket_id: The ticket identifier
+        ticket_data: Ticket data including assignment details
+        previous_team: The previous team (if this is a reassignment)
+        
+    Returns:
+        bool: True if notification was sent successfully
+    """
+    try:
+        success = send_team_assignment_notification(
+            ticket_id=ticket_id,
+            ticket_data=ticket_data,
+            previous_team=previous_team
+        )
+        
+        if success:
+            print(f"✅ Team assignment notification sent for ticket {ticket_id}")
+        else:
+            print(f"❌ Failed to send team assignment notification for ticket {ticket_id}")
+        
+        return success
+        
+    except Exception as e:
+        print(f"❌ Error sending team assignment notification: {e}")
+        return False
 
 
 def get_team_workload(

@@ -27,6 +27,10 @@ psycopg2-binary = "^2.9.9"
 redis = "^5.0.1"
 celery = "^5.3.4"
 anyio = "^4.8.0"
+streamlit = "^1.32.0"
+plotly = "^5.18.0"
+pandas = "^2.2.0"
+slack-sdk = "^3.27.1"
 
 [tool.poetry.group.dev]
 optional = true
