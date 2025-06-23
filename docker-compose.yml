@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # ADK API Server - Main agent API
+  api-server:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_CHANNEL_ID=${SLACK_CHANNEL_ID}
+      - SUPPORT_EMAIL=${SUPPORT_EMAIL}
+      - SUPPORT_EMAIL_PASSWORD=${SUPPORT_EMAIL_PASSWORD}
+    volumes:
+      - ./helpdesk.db:/app/helpdesk.db
+      - ./knowledge_base.txt:/app/knowledge_base.txt
+    command: ["python", "-m", "uvicorn", "ai_ticket_agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Slack App - Handle Slack interactions
+  slack-app:
+    build: .
+    ports:
+      - "5001:5001"
+    environment:
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_CHANNEL_ID=${SLACK_CHANNEL_ID}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION}
+    volumes:
+      - ./helpdesk.db:/app/helpdesk.db
+    command: ["python", "slack_app.py"]
+    restart: unless-stopped
+    depends_on:
+      - api-server
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Email Monitor - Background process for email feedback
+  email-monitor:
+    build: .
+    environment:
+      - SUPPORT_EMAIL=${SUPPORT_EMAIL}
+      - SUPPORT_EMAIL_PASSWORD=${SUPPORT_EMAIL_PASSWORD}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION}
+    volumes:
+      - ./helpdesk.db:/app/helpdesk.db
+    command: ["python", "ai_ticket_agent/tools/email_feedback_reader.py"]
+    restart: unless-stopped
+    depends_on:
+      - api-server
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api-server
+      - slack-app
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  database:
+
+networks:
+  default:
+    name: ai-ticket-agent-network 

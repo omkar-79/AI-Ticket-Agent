@@ -75,9 +75,8 @@ Our ADK multi-agent system provides intelligent automation:
 
 - Python 3.11+
 - Google Cloud Project (for Vertex AI integration)
-- PostgreSQL database
-- Redis (for Celery task queue)
-- Google Agent Development Kit 1.0+
+- Slack App (for notifications)
+- Gmail account (for email feedback)
 
 ### Installation
 
@@ -94,42 +93,95 @@ Our ADK multi-agent system provides intelligent automation:
 
 3. **Set up environment variables:**
    ```bash
-   cp .env.example .env
+   cp env.example .env
    ```
    
    Configure the following in `.env`:
    ```env
    # Google Cloud Configuration
-   GOOGLE_GENAI_USE_VERTEXAI=1
    GOOGLE_CLOUD_PROJECT=your-project-id
    GOOGLE_CLOUD_LOCATION=us-central1
    
-   # Database Configuration
-   DATABASE_URL=postgresql://user:password@localhost/helpdesk_db
+   # Slack Configuration
+   SLACK_BOT_TOKEN=xoxb-your-bot-token
+   SLACK_CHANNEL_ID=C0123456789
    
-   # Redis Configuration
-   REDIS_URL=redis://localhost:6379/0
-   
-   # API Configuration
-   API_KEY=your-api-key
+   # Email Configuration
+   SUPPORT_EMAIL=your-support@company.com
+   SUPPORT_EMAIL_PASSWORD=your-app-password
    ```
 
-4. **Set up database:**
+4. **Start the services:**
    ```bash
-   alembic upgrade head
+   # Quick start (all services)
+   ./start.sh start
+   
+   # Or use the deployment script
+   python deploy.py start
+   
+   # Or start individually
+   python deploy.py api      # ADK API Server (port 8000)
+   python deploy.py slack    # Slack App (port 5001)
+   python deploy.py email    # Email Monitor
+   adk web                   # ADK Web Interface (port 8080)
    ```
 
-5. **Start the services:**
-   ```bash
-   # Start Redis
-   redis-server
-   
-   # Start Celery worker
-   celery -A ai_ticket_agent.celery_app worker --loglevel=info
-   
-   # Start the API server
-   uvicorn ai_ticket_agent.main:app --reload
-   ```
+## 🏗️ System Architecture
+
+The AI Ticket Agent consists of multiple services:
+
+- **ADK API Server** (Port 8000) - Main agent API for ticket processing
+- **ADK Web Interface** (Port 8080) - Web UI for ticket creation
+- **Slack App** (Port 5001) - Handle Slack button interactions
+- **Email Feedback Monitor** - Background process for email feedback
+- **Database** - SQLite file (`helpdesk.db`)
+
+## 🚀 Deployment Options
+
+### Option 1: Local Development (Recommended for testing)
+```bash
+# Check system requirements
+python deploy.py check
+
+# Start all services
+python deploy.py start
+
+# Check status
+python deploy.py status
+
+# View logs
+python deploy.py logs api
+```
+
+### Option 2: Docker Compose (Recommended for production)
+```bash
+# Build and start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Start with production profile (includes Nginx)
+docker-compose --profile production up -d
+```
+
+### Option 3: Manual Service Management
+```bash
+# Start ADK API Server
+python -m uvicorn ai_ticket_agent.main:app --host 0.0.0.0 --port 8000
+
+# Start Slack App
+python slack_app.py
+
+# Start Email Monitor
+python ai_ticket_agent/tools/email_feedback_reader.py
+
+# Start ADK Web Interface (separate terminal)
+adk web
+```
 
 ## 🎯 Usage
 

@@ -72,7 +72,7 @@ def send_feedback_to_adk_api(ticket_id: str, feedback_text: str):
         print(f"📝 Sending feedback message: {feedback_message}")
         
         # Send the message to the ADK API server using the /run endpoint
-        run_url = "http://127.0.0.1:8000/run"
+        run_url = "http://127.0.0.1:8000/run"  # Updated to use port 8000
         
         payload = {
             "appName": app_name,
@@ -391,10 +391,10 @@ if __name__ == "__main__":
     # Choose your method:
     # True = Use ADK API Server (requires: adk api_server --port 8000)
     # False = Use Direct Agent Execution (no API server needed)
-    USE_API_SERVER = False  # Changed to False to bypass API server issues
+    USE_API_SERVER = True  # Changed to True for deployment
     
     if USE_API_SERVER:
-        print("🔗 Using ADK API Server mode")
+        print("🔗 Using ADK API Server mode (port 8000)")
         check_feedback_emails(use_api_server=True)
     else:
         print("🤖 Using Direct Agent Execution mode")
