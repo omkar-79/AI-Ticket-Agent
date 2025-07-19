@@ -1,36 +1,20 @@
-"""Main agent orchestrator for IT Helpdesk Ticket Management."""
+"""Root agent for IT Support multi-agent system."""
 
 from google.adk.agents import Agent
-from google.adk.tools import FunctionTool
-
 from ai_ticket_agent import prompt
-from ai_ticket_agent.sub_agents.classifier.agent import classifier_agent
-from ai_ticket_agent.sub_agents.assignment.agent import assignment_agent
-from ai_ticket_agent.sub_agents.knowledge.agent import knowledge_agent
-from ai_ticket_agent.sub_agents.follow_up.agent import follow_up_agent
-from ai_ticket_agent.tools.memory import _load_initial_state
-from ai_ticket_agent.tools.database import (
-    get_current_workflow_status,
-    get_workflow_summary,
-    create_ticket_and_start_workflow
-)
+from ai_ticket_agent.sub_agents import self_service_agent, escalation_agent
+from ai_ticket_agent.tools.problem_analyzer import problem_analyzer_tool
+from ai_ticket_agent.tools.email_collector import email_collector_tool
 
 
 root_agent = Agent(
     model="gemini-2.5-flash",
-    name="root_agent",
-    description="IT Helpdesk Ticket Orchestration System using LLM-powered specialized agents",
+    name="it_support_root_agent",
+    description="IT Support orchestrator that routes problems to appropriate sub-agents",
     instruction=prompt.ROOT_AGENT_INSTR,
     sub_agents=[
-        classifier_agent,
-        knowledge_agent,
-        assignment_agent,
-        follow_up_agent,
+        self_service_agent,
+        escalation_agent,
     ],
-    tools=[
-        FunctionTool(func=create_ticket_and_start_workflow),
-        FunctionTool(func=get_current_workflow_status),
-        FunctionTool(func=get_workflow_summary),
-    ],
-    before_agent_callback=_load_initial_state,
-) 
+    tools=[problem_analyzer_tool, email_collector_tool],
+)
