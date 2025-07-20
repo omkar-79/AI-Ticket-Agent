@@ -1,7 +1,7 @@
 [project]
 name = "ai-ticket-agent"
 version = "0.1.0"
-description = "Autonomous IT Helpdesk Ticket Orchestration using Google ADK multi-agent system for intelligent ticket routing, classification, and resolution."
+description = "Multi-Agent IT Support System using Google ADK for intelligent ticket routing and resolution."
 authors = [
     { name = "AI Ticket Agent Team", email = "team@example.com" },
 ]
@@ -10,26 +10,10 @@ readme = "README.md"
 requires-python = ">=3.11"
 
 [tool.poetry.dependencies]
-google-cloud-aiplatform = { extras = [
-    "adk",
-    "agent-engines",
-], version = "^1.93.0" }
 python = "^3.11"
-pydantic = "^2.10.6"
-python-dotenv = "^1.0.1"
-google-genai = "^1.16.1"
 google-adk = "^1.0.0"
-fastapi = "^0.115.0"
-uvicorn = "^0.34.0"
-sqlalchemy = "^2.0.23"
-alembic = "^1.12.1"
-psycopg2-binary = "^2.9.9"
-redis = "^5.0.1"
-celery = "^5.3.4"
-anyio = "^4.8.0"
-streamlit = "^1.32.0"
-plotly = "^5.18.0"
-pandas = "^2.2.0"
+google-genai = "^1.16.1"
+python-dotenv = "^1.0.1"
 slack-sdk = "^3.27.1"
 
 [tool.poetry.group.dev]
@@ -37,21 +21,9 @@ optional = true
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
-google-adk = { version = "^1.0.0", extras = ["eval"] }
 pytest-asyncio = "^0.26.0"
 black = "^23.11.0"
 flake8 = "^6.1.0"
-mypy = "^1.7.1"
-httpx = "^0.28.0"
-
-[tool.poetry.group.deployment]
-optional = true
-
-[tool.poetry.group.deployment.dependencies]
-absl-py = "^2.2.1"
-cloudpickle = "^3.1.1"
-flake8-pyproject = "^1.2.3"
-gunicorn = "^21.2.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

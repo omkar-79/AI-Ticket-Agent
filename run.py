@@ -16,7 +16,8 @@ def check_dependencies():
     required_packages = [
         ("google.adk", "google-adk"),
         ("google.genai", "google-genai"), 
-        ("dotenv", "python-dotenv")
+        ("dotenv", "python-dotenv"),
+        ("slack_sdk", "slack-sdk")
     ]
     
     missing_packages = []
@@ -68,8 +69,6 @@ def run_tests():
     """Run the test suite."""
     print("🧪 Running tests...")
     subprocess.run([sys.executable, "test_agents.py"])
-    print("\n🚨 Running escalation tests...")
-    subprocess.run([sys.executable, "test_escalation_scenarios.py"])
     print("\n🔔 Running Slack notification tests...")
     subprocess.run([sys.executable, "test_slack_notifications.py"])
 
@@ -83,7 +82,8 @@ def show_status():
     env_vars = [
         "GOOGLE_CLOUD_PROJECT",
         "GOOGLE_CLOUD_LOCATION", 
-        "GOOGLE_APPLICATION_CREDENTIALS"
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "SLACK_BOT_TOKEN"
     ]
     
     print("\nEnvironment Variables:")

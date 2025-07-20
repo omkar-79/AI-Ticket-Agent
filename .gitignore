@@ -5,13 +5,21 @@ venv/
 
 # IDE / Editor folders
 .vscode/
+.idea/
 
 # Mac OS
 .DS_Store
 
+# Python
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# Google Cloud credentials
+ai-ticket-agent-*.json
+*.json
+
 # Other
 travel-concierge/
 helpdesk.db
-*.pyc
-__pycache__/
-ai-ticket-agent-*.json
+logs/
