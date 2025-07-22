@@ -73,6 +73,18 @@ def run_tests():
     subprocess.run([sys.executable, "test_slack_notifications.py"])
 
 
+def init_db():
+    """Initialize the database."""
+    print("🗄️ Initializing database...")
+    subprocess.run([sys.executable, "init_database.py"])
+
+
+def run_dashboard():
+    """Run the Streamlit dashboard."""
+    print("📊 Starting Streamlit dashboard...")
+    subprocess.run([sys.executable, "-m", "streamlit", "run", "dashboard.py"])
+
+
 def show_status():
     """Show system status and configuration."""
     print("📊 AI Ticket Agent System Status")
@@ -110,6 +122,8 @@ def show_status():
     print("  python run.py cli           - Start ADK CLI interface")
     print("  python run.py test          - Run tests")
     print("  python run.py status        - Show system status")
+    print("  python run.py init-db       - Initialize database")
+    print("  python run.py dashboard     - Start Streamlit dashboard")
 
 
 def main():
@@ -127,7 +141,7 @@ Examples:
     
     parser.add_argument(
         "mode",
-        choices=["web", "cli", "test", "status"],
+        choices=["web", "cli", "test", "status", "init-db", "dashboard"],
         help="Mode to run the system in"
     )
     
@@ -149,6 +163,10 @@ Examples:
         run_tests()
     elif args.mode == "status":
         show_status()
+    elif args.mode == "init-db":
+        init_db()
+    elif args.mode == "dashboard":
+        run_dashboard()
 
 
 if __name__ == "__main__":

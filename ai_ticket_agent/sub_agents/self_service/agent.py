@@ -6,6 +6,7 @@ from ai_ticket_agent import prompt
 from ai_ticket_agent.tools.knowledge_base import knowledge_search_tool
 from ai_ticket_agent.tools.resolution_tracker import resolution_tracker_tool
 from ai_ticket_agent.tools.notification_sender import solution_notification_tool
+from ai_ticket_agent.tools.ticket_manager import create_ticket_tool
 from ai_ticket_agent.sub_agents.escalation.agent import escalation_agent
 
 # Agent tool for escalating to human team when self-service fails
@@ -20,6 +21,7 @@ self_service_agent = Agent(
         knowledge_search_tool,
         resolution_tracker_tool,
         solution_notification_tool,
+        create_ticket_tool,
         escalation_tool
     ],
     disallow_transfer_to_parent=True,

@@ -22,18 +22,8 @@ The AI Ticket Agent system uses LLM-powered agents to:
 
 ## 🏗️ System Flow
 
-```
-User Problem → Root Agent → Problem Analysis → Routing Decision
-                                    ↓
-                            ┌─────────────────┬─────────────────┐
-                            │ Self-Service    │ Escalation      │
-                            │ Agent           │ Agent           │
-                            │                 │                 │
-                            │ • Search KB     │ • Route to Team │
-                            │ • Provide Steps │ • Send to Slack │
-                            │ • Send Email    │ • Set Priority  │
-                            └─────────────────┴─────────────────┘
-```
+![AI Ticket Agent System Flowchart](images/Flowchart.jpeg)
+
 
 ## 🚀 Quick Start
 
@@ -84,6 +74,11 @@ User Problem → Root Agent → Problem Analysis → Routing Decision
    - Create team channels
    - Invite bot to channels
 
+5. **Initialize database:**
+   ```bash
+   python run.py init-db
+   ```
+
 ## 🎯 Usage
 
 ### Running the System
@@ -100,6 +95,12 @@ python run.py cli
 
 # Run tests
 python run.py test
+
+# Initialize database
+python run.py init-db
+
+# Start dashboard
+python run.py dashboard
 ```
 
 ### Example Interactions
@@ -159,6 +160,82 @@ Users receive email notifications for:
 - **Escalation confirmations** (human team assignment)
 - **Status updates** (when available)
 
+## 🗄️ Ticket Lifecycle Tracking
+
+The system now includes comprehensive ticket tracking with database persistence:
+
+### **Database Features:**
+- **Complete ticket lifecycle** from creation to resolution
+- **Status tracking** with audit trail of all changes
+- **Resolution attempts** with user feedback analysis
+- **Team assignments** and routing history
+- **Search and filtering** capabilities
+
+### **Ticket States:**
+- **Open** → **In Progress** → **Resolved** → **Closed**
+- **Escalated** (when human team intervention needed)
+
+### **Resolution Tracking:**
+- **Self-service attempts** with success/failure tracking
+- **User feedback analysis** using LLM-like logic
+- **Escalation reasons** and team assignments
+- **Complete audit trail** of all interactions
+
+### **Database Commands:**
+```bash
+# Initialize database
+python run.py init-db
+
+# Test ticket lifecycle
+python test_ticket_lifecycle.py
+
+# Start Streamlit dashboard
+python run.py dashboard
+```
+
+## 📊 Streamlit Dashboard
+
+The system includes a comprehensive Streamlit dashboard for real-time ticket monitoring and analytics:
+
+### **Dashboard Features:**
+- **📈 Real-time Metrics** - Total, open, resolved, and escalated tickets
+- **📊 Interactive Charts** - Status, priority, category, and team distributions
+- **🎫 Ticket Management** - Filter, search, and view detailed ticket information
+- **📈 Analytics** - Time-based analysis, resolution times, team performance
+- **⚙️ Settings** - Database status and system configuration
+
+### **Dashboard Sections:**
+
+#### **Main Dashboard:**
+- Key performance metrics
+- Status distribution pie chart
+- Priority distribution bar chart
+- Category and team analysis
+- Resolution success rates
+
+#### **Ticket Management:**
+- Filter tickets by status, priority, team
+- View detailed ticket information
+- Track resolution attempts and user feedback
+- Complete audit trail
+
+#### **Analytics:**
+- Daily ticket volume trends
+- Resolution time analysis
+- Team performance metrics
+- Success rate comparisons
+
+### **Starting the Dashboard:**
+```bash
+# Using run.py
+python run.py dashboard
+
+# Direct Streamlit command
+streamlit run dashboard.py
+```
+
+The dashboard will open in your browser at `http://localhost:8501`
+
 ## 🛠️ Configuration
 
 ### Customizing Team Channels
@@ -198,15 +275,27 @@ Edit `ai_ticket_agent/tools/knowledge_base.py` to add common solutions.
 ```
 ai_ticket_agent/
 ├── agent.py              # Root agent orchestrator
+├── models.py             # Database models and schemas
+├── database.py           # Database connection and management
 ├── prompt.py             # LLM prompts and instructions
-├── sub_agents/
-│   ├── self_service/     # Self-service agent
-│   └── escalation/       # Escalation agent
-└── tools/
-    ├── slack_handlers.py # Slack integration
-    ├── email_collector.py # Email collection
-    ├── team_router.py    # Team routing logic
-    └── ...               # Other tools
+├── tools/                # Agent tools and utilities
+│   ├── problem_analyzer.py
+│   ├── team_router.py
+│   ├── knowledge_base.py
+│   ├── resolution_tracker.py
+│   ├── ticket_manager.py
+│   ├── slack_handlers.py
+│   ├── email_collector.py
+│   └── notification_sender.py
+├── sub_agents/           # Specialized agent implementations
+└── __init__.py
+
+# Dashboard and utilities
+dashboard.py              # Streamlit dashboard application
+init_database.py          # Database initialization script
+run.py                    # Main runner script
+test_ticket_lifecycle.py  # Ticket lifecycle testing
+test_dashboard.py         # Dashboard functionality testing
 ```
 
 ## 🤝 Contributing

@@ -139,69 +139,70 @@ This is an automated response. For urgent issues, please call our helpdesk at 1-
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .header {{ background-color: #4CAF50; color: white; padding: 20px; text-align: center; }}
-        .content {{ padding: 20px; }}
-        .ticket-info {{ background-color: #f9f9f9; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }}
-        .solution {{ background-color: #e8f5e8; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }}
-        .steps {{ background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0; }}
-        .footer {{ background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; }}
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6fa; color: #222; margin: 0; padding: 0; }}
+        .container {{ max-width: 600px; margin: 30px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.07); overflow: hidden; }}
+        .header {{ background: linear-gradient(90deg, #007bff 0%, #4CAF50 100%); color: #fff; padding: 32px 24px 20px 24px; text-align: center; }}
+        .header h1 {{ margin: 0 0 8px 0; font-size: 2.2rem; letter-spacing: 1px; }}
+        .header p {{ margin: 0; font-size: 1.1rem; }}
+        .content {{ padding: 32px 24px 24px 24px; }}
+        .section {{ background: #f9f9f9; border-radius: 8px; margin-bottom: 24px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }}
+        .section h3 {{ margin-top: 0; color: #007bff; }}
+        .steps ol {{ padding-left: 20px; }}
+        .steps li {{ margin-bottom: 8px; }}
+        .footer {{ background: #f1f3f6; color: #888; text-align: center; padding: 18px 10px; font-size: 0.95rem; border-top: 1px solid #e0e0e0; }}
+        .ticket-info strong, .assignment strong {{ color: #333; }}
+        .assignment, .solution, .steps, .ticket-info {{ margin-bottom: 18px; }}
+        @media (max-width: 650px) {{
+            .container, .content, .header {{ padding: 12px !important; }}
+        }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>✅ Solution Found</h1>
-        <p>Your IT support request has been resolved!</p>
-    </div>
-    
-    <div class="content">
-        <p>Dear {ticket_data.get('user_name', 'Valued Customer')},</p>
-        
-        <p>Good news! We found a solution for your IT support request.</p>
-        
-        <div class="ticket-info">
-            <strong>Ticket ID:</strong> {ticket_id}<br>
-            <strong>Subject:</strong> {ticket_data.get('subject', 'N/A')}<br>
-            <strong>Priority:</strong> {ticket_data.get('priority', 'N/A')}
+    <div class="container">
+        <div class="header">
+            <h1>✅ Solution Found</h1>
+            <p>Your IT support request has been resolved!</p>
         </div>
-        
-        <div class="solution">
-            <h3>Solution:</h3>
-            <p>{solution_data.get('response_text', 'No solution text provided')}</p>
-        </div>
-        
-        <div class="steps">
-            <h3>Step-by-Step Instructions:</h3>
-            <ol>
+        <div class="content">
+            <div class="section ticket-info">
+                <h3>Ticket Information</h3>
+                <p><strong>Ticket ID:</strong> {ticket_id}<br>
+                <strong>Subject:</strong> {ticket_data.get('subject', 'N/A')}<br>
+                <strong>Priority:</strong> {ticket_data.get('priority', 'N/A')}</p>
+            </div>
+            <div class="section solution">
+                <h3>Solution</h3>
+                <p>{solution_data.get('response_text', 'No solution text provided')}</p>
+            </div>
+            <div class="section steps">
+                <h3>Step-by-Step Instructions</h3>
+                <ol>
 """
-        
         for step in solution_data.get('solution_steps', []):
-            html_body += f"                <li>{step}</li>\n"
-        
+            html_body += f"<li>{step}</li>\n"
         html_body += f"""
-            </ol>
-        </div>
-        
-        <p><strong>Additional Resources:</strong></p>
-        <ul>
+                </ol>
+            </div>
+            <div class="section">
+                <h3>Additional Resources</h3>
+                <ul>
 """
-        
         for article in solution_data.get('related_articles', []):
-            html_body += f"            <li>{article}</li>\n"
-        
+            html_body += f"<li>{article}</li>\n"
         html_body += f"""
-        </ul>
-        
-        <p>If these steps don't resolve your issue, please reply to this email and we'll escalate your ticket to a specialist.</p>
-        
-        <p>Thank you for using our IT support service.</p>
-        
-        <p>Best regards,<br>IT Support Team</p>
-    </div>
-    
-    <div class="footer">
-        <p>This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.</p>
+                </ul>
+            </div>
+            <div class="section">
+                <p>If these steps don't resolve your issue, please reply to this email and we'll escalate your ticket to a specialist.</p>
+                <p>Thank you for using our IT support service.</p>
+                <p>Best regards,<br>IT Support Team</p>
+            </div>
+        </div>
+        <div class="footer">
+            This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.
+        </div>
     </div>
 </body>
 </html>
@@ -259,57 +260,62 @@ IT Support Team
 This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.
         """.strip()
         
-        # HTML body
+        # Modern HTML body with table for ticket details and assignment info
         html_body = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .header {{ background-color: #007bff; color: white; padding: 20px; text-align: center; }}
-        .content {{ padding: 20px; }}
-        .ticket-info {{ background-color: #f9f9f9; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0; }}
-        .assignment {{ background-color: #e3f2fd; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0; }}
-        .footer {{ background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; }}
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6fa; color: #222; margin: 0; padding: 0; }}
+        .container {{ max-width: 600px; margin: 30px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.07); overflow: hidden; }}
+        .header {{ background: linear-gradient(90deg, #007bff 0%, #4CAF50 100%); color: #fff; padding: 32px 24px 20px 24px; text-align: center; }}
+        .header h1 {{ margin: 0 0 8px 0; font-size: 2.2rem; letter-spacing: 1px; }}
+        .header p {{ margin: 0; font-size: 1.1rem; }}
+        .content {{ padding: 32px 24px 24px 24px; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+        td {{ padding: 10px; border: 1px solid #ddd; }}
+        tr:nth-child(even) {{ background-color: #f2f2f2; }}
+        .section {{ background: #f9f9f9; border-radius: 8px; margin-bottom: 24px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }}
+        .section h3 {{ margin-top: 0; color: #007bff; }}
+        .footer {{ background: #f1f3f6; color: #888; text-align: center; padding: 18px 10px; font-size: 0.95rem; border-top: 1px solid #e0e0e0; }}
+        @media (max-width: 650px) {{
+            .container, .content, .header {{ padding: 12px !important; }}
+        }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>📋 Ticket Assigned</h1>
-        <p>Your IT support request has been assigned to our specialized team</p>
-    </div>
-    
-    <div class="content">
-        <p>Dear {ticket_data.get('user_name', 'Valued Customer')},</p>
-        
-        <p>Your IT support request has been received and assigned to our specialized team.</p>
-        
-        <div class="ticket-info">
-            <strong>Ticket ID:</strong> {ticket_id}<br>
-            <strong>Subject:</strong> {ticket_data.get('subject', 'N/A')}<br>
-            <strong>Priority:</strong> {ticket_data.get('priority', 'N/A')}<br>
-            <strong>Category:</strong> {ticket_data.get('category', 'N/A')}
+    <div class="container">
+        <div class="header">
+            <h1>📋 Ticket Assigned</h1>
+            <p>Your IT support request has been assigned to our specialized team</p>
         </div>
-        
-        <div class="assignment">
-            <h3>Assignment Details:</h3>
-            <p><strong>Assigned Team:</strong> {assignment_data.get('team', 'N/A')}</p>
-            <p><strong>Expected Response Time:</strong> {assignment_data.get('estimated_response_time', 'N/A')}</p>
-            <p><strong>SLA Target:</strong> {assignment_data.get('sla_target', 'N/A')}</p>
+        <div class="content">
+            <table>
+                <tr><td><strong>Ticket ID:</strong></td><td>{ticket_id}</td></tr>
+                <tr><td><strong>Subject:</strong></td><td>{ticket_data.get('subject', 'N/A')}</td></tr>
+                <tr><td><strong>Priority:</strong></td><td>{str(ticket_data.get('priority', 'N/A')).upper()}</td></tr>
+                <tr><td><strong>Category:</strong></td><td>{ticket_data.get('category', 'N/A')}</td></tr>
+                <tr><td><strong>Status:</strong></td><td>{ticket_data.get('status', 'N/A')}</td></tr>
+                <tr><td><strong>Assigned Team:</strong></td><td>{assignment_data.get('team', 'N/A')}</td></tr>
+                <tr><td><strong>Expected Response Time:</strong></td><td>{assignment_data.get('estimated_response_time', 'N/A')}</td></tr>
+                <tr><td><strong>SLA Target:</strong></td><td>{assignment_data.get('sla_target', 'N/A')}</td></tr>
+            </table>
+            <div class="section">
+                <h3>Description</h3>
+                <p style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #007cba;">{ticket_data.get('description', 'N/A')}</p>
+            </div>
+            <div class="section">
+                <p>Our {assignment_data.get('team', 'specialized team')} will review your request and provide a solution within the specified timeframe.</p>
+                <p>You will receive updates on your ticket status via email. If you have any urgent questions, please reply to this email.</p>
+                <p>Thank you for your patience.</p>
+                <p>Best regards,<br>IT Support Team</p>
+            </div>
         </div>
-        
-        <p>Our {assignment_data.get('team', 'specialized team')} will review your request and provide a solution within the specified timeframe.</p>
-        
-        <p>You will receive updates on your ticket status via email. If you have any urgent questions, please reply to this email.</p>
-        
-        <p>Thank you for your patience.</p>
-        
-        <p>Best regards,<br>IT Support Team</p>
-    </div>
-    
-    <div class="footer">
-        <p>This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.</p>
+        <div class="footer">
+            This is an automated response. For urgent issues, please call our helpdesk at 1-800-IT-SUPPORT.
+        </div>
     </div>
 </body>
 </html>

@@ -8,6 +8,7 @@ from .resolution_tracker import resolution_tracker_tool
 from .slack_handlers import slack_escalation_tool
 from .email_collector import email_collector_tool
 from .notification_sender import solution_notification_tool, escalation_notification_tool
+from .ticket_manager import create_ticket_tool, update_ticket_tool, get_ticket_info_tool, search_tickets_tool
 
 __all__ = [
     "problem_analyzer_tool",
@@ -18,4 +19,8 @@ __all__ = [
     "email_collector_tool",
     "solution_notification_tool",
     "escalation_notification_tool",
+    "create_ticket_tool",
+    "update_ticket_tool", 
+    "get_ticket_info_tool",
+    "search_tickets_tool",
 ] 
